@@ -27,4 +27,18 @@
   .pv2-overlay{position:absolute;z-index:20;left:0;top:0;width:100%;height:120px;overflow:visible;pointer-events:none}.pv2-overlay text{font-family:"Yu Gothic","Noto Sans JP",sans-serif}.pv2-overlay .roman{font-family:"Yu Mincho","Times New Roman",serif;font-weight:700}
   .pv2-page-underlay,.pv2-page-overlay{position:absolute;left:55px;top:0;width:calc(100% - 55px);overflow:visible;pointer-events:none}.pv2-page-underlay{z-index:0}.pv2-page-overlay{z-index:20}.pv2-page-overlay text{font-family:"Yu Gothic","Noto Sans JP",sans-serif}
 }
-\nbody.scorebook-view{margin:0!important;background:#2c2926!important;overflow:hidden!important}\nbody.scorebook-view main.app{display:none!important}\nbody.scorebook-view .shian-print-v2{position:fixed;left:50%;top:72px;z-index:10;transform:translateX(-50%) scale(var(--viewer-scale,1));transform-origin:top center;background:#fff!important}\nbody.scorebook-view .pv2-page{display:none!important;margin:0!important;box-shadow:0 4px 24px #0008}\nbody.scorebook-view .pv2-page.viewer-current{display:block!important}\n.scorebook-view-nav{position:fixed;z-index:100;left:0;right:0;bottom:0;height:54px;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(transparent,#211f1ddd);color:#fff}\n.scorebook-view-nav button{width:42px;height:42px;border:1px solid #ffffff55;border-radius:50%;background:#332c25dd;color:#fff;font-size:22px}\n.scorebook-view-nav .back{width:auto;border-radius:9px;padding:0 13px;font-size:13px}\n.scorebook-view-count{min-width:48px;text-align:center;font-weight:700}\n
+
+body.scorebook-view{margin:0!important;background:#2c2926!important;overflow:hidden!important}
+body.scorebook-view main.app{display:none!important}
+body.scorebook-view .shian-print-v2{position:fixed;left:50%;top:72px;z-index:10;transform:translateX(-50%) scale(var(--viewer-scale,1));transform-origin:top center;background:#fff!important}
+body.scorebook-view .pv2-page{display:none!important;margin:0!important;box-shadow:0 4px 24px #0008}
+body.scorebook-view .pv2-page.viewer-current{display:block!important}
+.scorebook-view-nav{position:fixed;z-index:100;left:0;right:0;bottom:0;height:54px;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(transparent,#211f1ddd);color:#fff}
+.scorebook-view-nav button{width:42px;height:42px;border:1px solid #ffffff55;border-radius:50%;background:#332c25dd;color:#fff;font-size:22px}
+.scorebook-view-nav .back{width:auto;border-radius:9px;padding:0 13px;font-size:13px}
+.scorebook-view-count{min-width:48px;text-align:center;font-weight:700}
+
+/* Scorebook viewer v5.6: center the printed sheet below the common header. */
+body.scorebook-view{margin:0!important;background:#e5ded3!important;overflow:hidden!important}
+body.scorebook-view .shian-print-v2{position:fixed!important;left:50%!important;right:auto!important;top:52px!important;width:196mm!important;margin:0!important;transform:translateX(-50%) scale(var(--viewer-scale,1))!important;transform-origin:top center!important}
+body.scorebook-view .pv2-page{margin:0 auto!important}

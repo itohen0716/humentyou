@@ -1375,9 +1375,11 @@ window.addEventListener("pagehide",save);
 window.addEventListener("pageshow",()=>{try{const latest=JSON.parse(localStorage.getItem(KEY)||"null");if(latest){state={...defaults,...latest,scoreEditLayer:"notes"};migrateState();drawing=false;render()}}catch(error){console.warn("最新の譜面を読み込めませんでした。",error)}});
 render();if(!hasSaved&&!IS_ANNOTATION_PAGE)openNew();
 if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView")==="1"){
-  const link=document.createElement("link");link.rel="stylesheet";link.href="./scorebook-view.css?v=5";document.head.appendChild(link);
-  document.body.classList.add("scorebook-view");
+ window.addEventListener("load",()=>{
+  const link=document.createElement("link");link.rel="stylesheet";link.href="./scorebook-view.css?v=5";link.media="not all";document.head.appendChild(link);
   applyPrintLayout();
+  document.body.classList.add("scorebook-view");
+  link.media="all";
   const pages=Array.from(qAll("#printRootV2 .pv2-page"));let current=0;
   const nav=document.createElement("div");nav.className="scorebook-view-nav";nav.innerHTML='<button type="button" data-vprev aria-label="前のページ">‹</button><span class="scorebook-view-count"></span><button type="button" data-vnext aria-label="次のページ">›</button><button type="button" class="back" data-vback>譜面帳へ戻る</button>';document.body.appendChild(nav);
   const fit=()=>{const scale=Math.min((innerWidth-16)/741,(innerHeight-72)/1070,1);document.body.style.setProperty("--viewer-scale",String(Math.max(.25,scale)))};
@@ -1386,12 +1388,13 @@ if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView"
   addEventListener("resize",fit,{passive:true});addEventListener("keydown",e=>{if(e.key==="ArrowLeft"&&current>0){current--;show()}else if(e.key==="ArrowRight"&&current<pages.length-1){current++;show()}else if(e.key==="Escape")location.href="./scorebook.html"});
   let sx=null;document.addEventListener("touchstart",e=>{sx=e.changedTouches[0].clientX},{passive:true});document.addEventListener("touchend",e=>{if(sx===null)return;const d=e.changedTouches[0].clientX-sx;if(Math.abs(d)>45){if(d<0&&current<pages.length-1)current++;if(d>0&&current>0)current--;show()}sx=null},{passive:true});
   requestAnimationFrame(show);
+ },{once:true});
 }
 })();
 </script>
   <script src="./print-v2.js?v=138"></script>
 <style id="scorebook-return-style">
-.scorebook-return-header{height:64px;background:#fffaf3;border-bottom:1px solid #d8cbbd;display:flex;align-items:center;justify-content:space-between;padding:8px 24px;gap:16px;position:relative;z-index:10000;color:#332c26;font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",sans-serif}.scorebook-return-brand{font-family:"Yu Mincho",serif;font-size:21px;font-weight:700;line-height:1.1}.scorebook-return-brand small{display:block;font:9px sans-serif;letter-spacing:.2em;color:#766a60;margin-top:5px}.scorebook-return-button{border:1px solid #abc2ca;border-radius:9px;background:#e9f1f3;color:#315f70;font-weight:700;padding:9px 14px;cursor:pointer;white-space:nowrap}@media(max-width:600px){.scorebook-return-header{height:58px;padding:7px 12px}.scorebook-return-brand{font-size:18px}.scorebook-return-button{padding:8px 10px;font-size:13px}}
+.scorebook-return-header{height:64px;background:#fffaf3;border-bottom:1px solid #d8cbbd;display:flex;align-items:center;justify-content:flex-start;padding:8px 24px;gap:24px;position:relative;z-index:10000;color:#332c26;font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",sans-serif}.scorebook-return-brand{font-family:"Yu Mincho",serif;font-size:21px;font-weight:700;line-height:1.1}.scorebook-return-brand small{display:block;font:9px sans-serif;letter-spacing:.2em;color:#766a60;margin-top:5px}.scorebook-return-button{border:1px solid #abc2ca;border-radius:9px;background:#e9f1f3;color:#315f70;font-weight:700;padding:9px 14px;cursor:pointer;white-space:nowrap}@media(max-width:600px){.scorebook-return-header{height:58px;padding:7px 12px}.scorebook-return-brand{font-size:18px}.scorebook-return-button{padding:8px 10px;font-size:13px}}
 </style>
 <script id="scorebook-return-script">
 (()=>{const q=new URLSearchParams(location.search);if(!(q.get('from')==='scorebook'||q.get('scorebookView')==='1'))return;const h=document.createElement('header');h.className='scorebook-return-header';h.innerHTML='<div class="scorebook-return-brand">文化譜面帳<small>SHIAN SCORE BOOK</small></div><button type="button" class="scorebook-return-button">← 譜面帳に戻る</button>';document.body.prepend(h);h.querySelector('button').onclick=()=>location.href='./scorebook.html';document.querySelectorAll('a[href="./annotations.html"]').forEach(a=>a.href='./annotations.html?from=scorebook');document.querySelectorAll('a[href="./index.html"]').forEach(a=>a.href='./index.html?from=scorebook');})();

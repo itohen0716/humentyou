@@ -179,6 +179,20 @@
     @media print{.measure.on .note b{background:transparent!important}}
   </style>
   <link rel="stylesheet" href="./print-v2.css?v=127">
+
+<style id="scorebook-view-prepaint">
+html.scorebook-view-pending body{visibility:hidden}
+html.scorebook-view-pending body::before{content:"譜面を準備しています…";visibility:visible;position:fixed;inset:0;display:grid;place-items:center;background:#e5ded3;color:#5f554c;font-family:"Yu Gothic",sans-serif;font-size:14px;letter-spacing:.04em;z-index:2147483647}
+</style>
+<script id="scorebook-view-prepaint-script">
+(()=>{
+  if(new URLSearchParams(location.search).get("scorebookView")==="1"){
+    document.documentElement.classList.add("scorebook-view-pending");
+    document.title="文化譜を見る｜文化譜面帳";
+  }
+})();
+</script>
+
 </head>
 <body class="score-page">
 <div id="printRoot" class="print-root" aria-hidden="true"></div>
@@ -1534,5 +1548,32 @@ if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView"
   setTimeout(()=>{applyLocks();hookBack()},350);
 })();
 </script>
+
+<script id="scorebook-view-reveal-v64">
+(()=>{
+  if(new URLSearchParams(location.search).get("scorebookView")!=="1") return;
+  const reveal=()=>{
+    if(document.body.classList.contains("scorebook-view") &&
+       document.querySelector(".shian-print-v2 .pv2-page")){
+      requestAnimationFrame(()=>{
+        requestAnimationFrame(()=>{
+          document.documentElement.classList.remove("scorebook-view-pending");
+        });
+      });
+      return true;
+    }
+    return false;
+  };
+  addEventListener("load",()=>{
+    if(reveal()) return;
+    const observer=new MutationObserver(()=>{
+      if(reveal()) observer.disconnect();
+    });
+    observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
+    setTimeout(()=>{ reveal(); observer.disconnect(); },5000);
+  },{once:true});
+})();
+</script>
+
 </body>
 </html>

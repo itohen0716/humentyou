@@ -1377,7 +1377,7 @@ render();if(!hasSaved&&!IS_ANNOTATION_PAGE)openNew();
 if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView")==="1"){
   document.title="文化譜を見る｜文化譜面帳";
  window.addEventListener("load",()=>{
-  const link=document.createElement("link");link.rel="stylesheet";link.href="./scorebook-view.css?v=62";link.media="not all";document.head.appendChild(link);
+  const link=document.createElement("link");link.rel="stylesheet";link.href="./scorebook-view.css?v=63";link.media="not all";document.head.appendChild(link);
   applyPrintLayout();
   document.body.classList.add("scorebook-view");
   link.media="all";

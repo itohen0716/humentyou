@@ -70,3 +70,10 @@ body.scorebook-view .shian-print-v2{
 body.scorebook-view .pv2-page{
   margin:0 auto!important;
 }
+
+/* v6.3: 閲覧画面だけ、譜面右端に読みやすい余白を追加。
+   印刷データ・音符位置・JSONには影響させない。 */
+body.scorebook-view .pv2-page{
+  box-sizing:border-box!important;
+  padding-right:18mm!important;
+}

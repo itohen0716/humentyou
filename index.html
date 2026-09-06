@@ -408,6 +408,13 @@ function migrateState(){
 }
 function load(){
   try{
+    const handoffRaw=sessionStorage.getItem("shian-scorebook-edit-score");
+    if(handoffRaw){
+      sessionStorage.removeItem("shian-scorebook-edit-score");
+      const handoff=JSON.parse(handoffRaw);
+      const incoming=handoff?.format==="shian-bunkafu"?handoff.score:handoff;
+      if(incoming&&Array.isArray(incoming.notes)){state={...defaults,...incoming,scoreEditLayer:"notes"};migrateState();ensureTechniqueLayer();hasSaved=true;localStorage.setItem(KEY,JSON.stringify(serializable()));return}
+    }
     const current=JSON.parse(localStorage.getItem(KEY));
     if(current&&Array.isArray(current.notes)){state={...defaults,...current,vocalVisible:typeof current.vocalVisible==="boolean"?current.vocalVisible:Boolean(current.lyricsMode),lyricsVisible:typeof current.lyricsVisible==="boolean"?current.lyricsVisible:Boolean(current.lyricsMode),annotationCoordVersion:current.annotationCoordVersion||1,markerStyleVersion:current.markerStyleVersion||1};migrateState();ensureTechniqueLayer();hasSaved=true;return}
     const old=JSON.parse(localStorage.getItem(OLD_KEY));

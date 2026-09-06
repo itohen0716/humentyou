@@ -180,11 +180,17 @@
   </style>
   <link rel="stylesheet" href="./print-v2.css?v=127">
 
-<style id="scorebook-view-prepaint">
-html.scorebook-view-pending body{visibility:hidden}
-html.scorebook-view-pending body::before{content:"譜面を準備しています…";visibility:visible;position:fixed;inset:0;display:grid;place-items:center;background:#e5ded3;color:#5f554c;font-family:"Yu Gothic",sans-serif;font-size:14px;letter-spacing:.04em;z-index:2147483647}
+
+<style id="scorebook-view-loader-style">
+#scorebookViewLoader{display:none}
+html.scorebook-view-pending #scorebookViewLoader{
+  display:grid;position:fixed;inset:0;place-items:center;
+  background:#e5ded3;color:#5f554c;font-family:"Yu Gothic",sans-serif;
+  font-size:14px;letter-spacing:.04em;z-index:2147483647
+}
+html.scorebook-view-pending body>main.app{visibility:hidden!important}
 </style>
-<script id="scorebook-view-prepaint-script">
+<script id="scorebook-view-prepaint-script-v65">
 (()=>{
   if(new URLSearchParams(location.search).get("scorebookView")==="1"){
     document.documentElement.classList.add("scorebook-view-pending");
@@ -192,7 +198,6 @@ html.scorebook-view-pending body::before{content:"譜面を準備しています
   }
 })();
 </script>
-
 </head>
 <body class="score-page">
 <div id="printRoot" class="print-root" aria-hidden="true"></div>
@@ -1484,12 +1489,25 @@ if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView"
     }catch(e){console.error("scorebook commit failed",e);return false}
   }
 
+
+  function restoreEditorControls(){
+    document.querySelectorAll(".panel button,.controls button,.seg button,.nums button,.rests button,.part-tools button,.layout-controls button,.move button").forEach(b=>{
+      if(!b.classList.contains("scorebook-locked-control")){
+        b.disabled=false;
+        b.removeAttribute("aria-disabled");
+        b.style.pointerEvents="";
+        b.style.opacity="";
+        b.style.filter="";
+      }
+    });
+  }
+
   function applyLocks(){
     const buttons=[...document.querySelectorAll("button")];
     buttons.forEach(b=>{
       const t=norm(b.textContent);
-      const isNew=t.includes("新規");
-      const isLoad=t.includes("読込")||t.includes("読み込");
+      const isNew=(t==="新規"||t==="＋新規作成"||t==="新規作成");
+      const isLoad=(t==="読込"||t==="読み込む"||t==="取り込む"||t==="文化譜を読込");
       const isSave=t==="保存"||t==="譜面帳に保存";
 
       if(isNew||isLoad){
@@ -1520,6 +1538,8 @@ if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView"
       }
     });
 
+    restoreEditorControls();
+
     const actionArea=buttons.find(b=>norm(b.textContent).includes("新規"))?.parentElement
       || buttons.find(b=>norm(b.textContent).includes("読込"))?.parentElement;
     if(actionArea&&!document.getElementById("scorebook-lock-note-v62")){
@@ -1549,31 +1569,28 @@ if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView"
 })();
 </script>
 
-<script id="scorebook-view-reveal-v64">
+
+<script id="scorebook-view-reveal-v65">
 (()=>{
   if(new URLSearchParams(location.search).get("scorebookView")!=="1") return;
   const reveal=()=>{
     if(document.body.classList.contains("scorebook-view") &&
        document.querySelector(".shian-print-v2 .pv2-page")){
-      requestAnimationFrame(()=>{
-        requestAnimationFrame(()=>{
-          document.documentElement.classList.remove("scorebook-view-pending");
-        });
-      });
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        document.documentElement.classList.remove("scorebook-view-pending");
+        document.getElementById("scorebookViewLoader")?.remove();
+      }));
       return true;
     }
     return false;
   };
   addEventListener("load",()=>{
-    if(reveal()) return;
-    const observer=new MutationObserver(()=>{
-      if(reveal()) observer.disconnect();
-    });
-    observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:["class"]});
-    setTimeout(()=>{ reveal(); observer.disconnect(); },5000);
+    if(reveal())return;
+    const mo=new MutationObserver(()=>{if(reveal())mo.disconnect()});
+    mo.observe(document.body,{subtree:true,childList:true,attributes:true});
+    setTimeout(()=>{reveal();mo.disconnect()},5000);
   },{once:true});
 })();
 </script>
-
 </body>
 </html>

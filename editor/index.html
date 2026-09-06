@@ -1375,14 +1375,15 @@ window.addEventListener("pagehide",save);
 window.addEventListener("pageshow",()=>{try{const latest=JSON.parse(localStorage.getItem(KEY)||"null");if(latest){state={...defaults,...latest,scoreEditLayer:"notes"};migrateState();drawing=false;render()}}catch(error){console.warn("最新の譜面を読み込めませんでした。",error)}});
 render();if(!hasSaved&&!IS_ANNOTATION_PAGE)openNew();
 if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView")==="1"){
+  document.title="文化譜を見る｜文化譜面帳";
  window.addEventListener("load",()=>{
-  const link=document.createElement("link");link.rel="stylesheet";link.href="./scorebook-view.css?v=56";link.media="not all";document.head.appendChild(link);
+  const link=document.createElement("link");link.rel="stylesheet";link.href="./scorebook-view.css?v=62";link.media="not all";document.head.appendChild(link);
   applyPrintLayout();
   document.body.classList.add("scorebook-view");
   link.media="all";
   const pages=Array.from(qAll("#printRootV2 .pv2-page"));let current=0;
   const nav=document.createElement("div");nav.className="scorebook-view-nav";nav.innerHTML='<button type="button" data-vprev aria-label="前のページ">‹</button><span class="scorebook-view-count"></span><button type="button" data-vnext aria-label="次のページ">›</button>';document.body.appendChild(nav);
-  const fit=()=>{const scale=Math.min((innerWidth-16)/741,(innerHeight-132)/1070,1);document.body.style.setProperty("--viewer-scale",String(Math.max(.25,scale)))};
+  const fit=()=>{const scale=Math.min((innerWidth-40)/741,innerWidth>=1000?1.12:1);document.body.style.setProperty("--viewer-scale",String(Math.max(.42,scale)))};
   const show=()=>{pages.forEach((el,i)=>el.classList.toggle("viewer-current",i===current));nav.querySelector(".scorebook-view-count").textContent=`${current+1} / ${Math.max(1,pages.length)}`;nav.querySelector("[data-vprev]").disabled=current<=0;nav.querySelector("[data-vnext]").disabled=current>=pages.length-1;fit()};
   nav.querySelector("[data-vprev]").onclick=()=>{if(current>0){current--;show()}};nav.querySelector("[data-vnext]").onclick=()=>{if(current<pages.length-1){current++;show()}};
   addEventListener("resize",fit,{passive:true});addEventListener("keydown",e=>{if(e.key==="ArrowLeft"&&current>0){current--;show()}else if(e.key==="ArrowRight"&&current<pages.length-1){current++;show()}else if(e.key==="Escape")location.href="../index.html"});
@@ -1418,6 +1419,119 @@ if(!IS_ANNOTATION_PAGE&&new URLSearchParams(location.search).get("scorebookView"
     if(bar&&!bar.querySelector('.scorebook-lock-note')){const n=document.createElement('span');n.className='scorebook-lock-note';n.textContent='※「読込」「新規作成」は、譜面帳から開いているため使用できません';bar.appendChild(n);}
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',apply,{once:true});else apply();
+})();
+</script>
+
+<script id="scorebook-editor-integration-v62">
+(()=>{
+  const params=new URLSearchParams(location.search);
+  if(params.get("from")!=="scorebook") return;
+
+  const LIB="shian-scorebook-library-v1";
+  const EDITOR_KEY="shian-bunkafu-editor-v2";
+  const itemId=params.get("id")||sessionStorage.getItem("shian-scorebook-edit-id")||"";
+  const norm=s=>String(s||"").replace(/\s+/g,"").trim();
+
+  function currentScore(){
+    try{
+      if(typeof serializable==="function") return serializable();
+    }catch(e){console.warn(e)}
+    try{return JSON.parse(localStorage.getItem(EDITOR_KEY)||"null")}catch{return null}
+  }
+
+  function commitToScorebook(){
+    const score=currentScore();
+    if(!score) return false;
+    try{
+      let lib=JSON.parse(localStorage.getItem(LIB)||"[]");
+      if(!Array.isArray(lib)) lib=[];
+      let i=itemId ? lib.findIndex(x=>x.id===itemId) : -1;
+      if(i<0){
+        const title=String(score.title||"");
+        i=lib.findIndex(x=>{
+          const s=x?.payload?.format==="shian-bunkafu"?x.payload.score:x?.payload;
+          return String(s?.title||x?.name||"")===title;
+        });
+      }
+      if(i<0) return false;
+      const old=lib[i];
+      const wrapped=old?.payload?.format==="shian-bunkafu";
+      lib[i]={
+        ...old,
+        name:score.title||old.name,
+        updatedAt:Date.now(),
+        payload:wrapped
+          ? {...old.payload, exportedAt:new Date().toISOString(), score}
+          : score
+      };
+      localStorage.setItem(LIB,JSON.stringify(lib));
+      localStorage.setItem(EDITOR_KEY,JSON.stringify(score));
+      return true;
+    }catch(e){console.error("scorebook commit failed",e);return false}
+  }
+
+  function applyLocks(){
+    const buttons=[...document.querySelectorAll("button")];
+    buttons.forEach(b=>{
+      const t=norm(b.textContent);
+      const isNew=t.includes("新規");
+      const isLoad=t.includes("読込")||t.includes("読み込");
+      const isSave=t==="保存"||t==="譜面帳に保存";
+
+      if(isNew||isLoad){
+        b.disabled=true;
+        b.setAttribute("aria-disabled","true");
+        b.classList.add("scorebook-locked-control");
+        b.style.cursor="not-allowed";
+        b.style.opacity=".46";
+        b.style.filter="grayscale(1)";
+      }
+      if(isSave){
+        b.disabled=false;
+        b.removeAttribute("aria-disabled");
+        b.classList.remove("scorebook-locked-control");
+        b.style.cursor="";
+        b.style.opacity="";
+        b.style.filter="";
+        b.textContent="譜面帳に保存";
+        if(!b.dataset.scorebookSaveHook){
+          b.dataset.scorebookSaveHook="1";
+          b.addEventListener("click",()=>setTimeout(()=>{
+            if(commitToScorebook()){
+              let msg=document.getElementById("scorebook-save-status-v62");
+              if(msg){msg.textContent="譜面帳に保存しました";setTimeout(()=>{if(msg)msg.textContent=""},2200)}
+            }
+          },0));
+        }
+      }
+    });
+
+    const actionArea=buttons.find(b=>norm(b.textContent).includes("新規"))?.parentElement
+      || buttons.find(b=>norm(b.textContent).includes("読込"))?.parentElement;
+    if(actionArea&&!document.getElementById("scorebook-lock-note-v62")){
+      const note=document.createElement("small");
+      note.id="scorebook-lock-note-v62";
+      note.textContent="譜面帳から開いているため、新規・読込は使用できません";
+      note.style.cssText="display:block;width:100%;margin-top:4px;color:#756b63;font-size:11px;text-align:right";
+      actionArea.appendChild(note);
+      const status=document.createElement("small");
+      status.id="scorebook-save-status-v62";
+      status.style.cssText="display:block;width:100%;min-height:14px;margin-top:2px;color:#315f70;font-size:11px;text-align:right;font-weight:700";
+      actionArea.appendChild(status);
+    }
+  }
+
+  function hookBack(){
+    document.querySelectorAll(".scorebook-return-header button,.scorebook-return-header a").forEach(el=>{
+      if(el.dataset.scorebookBackHook)return;
+      el.dataset.scorebookBackHook="1";
+      el.addEventListener("click",commitToScorebook,{capture:true});
+    });
+  }
+
+  addEventListener("DOMContentLoaded",()=>{applyLocks();hookBack()},{once:true});
+  addEventListener("pageshow",()=>{applyLocks();hookBack()});
+  setTimeout(()=>{applyLocks();hookBack()},350);
 })();
 </script>
 </body>

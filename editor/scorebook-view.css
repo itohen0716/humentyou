@@ -42,3 +42,31 @@ body.scorebook-view .pv2-page.viewer-current{display:block!important}
 body.scorebook-view{margin:0!important;background:#e5ded3!important;overflow:hidden!important}
 body.scorebook-view .shian-print-v2{position:fixed!important;left:50%!important;right:auto!important;top:52px!important;width:196mm!important;margin:0!important;transform:translateX(-50%) scale(var(--viewer-scale,1))!important;transform-origin:top center!important}
 body.scorebook-view .pv2-page{margin:0 auto!important}
+
+/* v6.2: scorebook viewer is centered and deliberately larger.
+   If the A4 page is taller than the viewport, the page scrolls vertically instead of becoming tiny. */
+body.scorebook-view{
+  margin:0!important;
+  background:#e5ded3!important;
+  overflow-x:hidden!important;
+  overflow-y:auto!important;
+  min-height:100vh!important;
+}
+body.scorebook-view .scorebook-return-header{
+  position:sticky!important;
+  top:0!important;
+  z-index:10000!important;
+}
+body.scorebook-view .shian-print-v2{
+  position:absolute!important;
+  left:50%!important;
+  right:auto!important;
+  top:82px!important;
+  width:196mm!important;
+  margin:0 0 90px!important;
+  transform:translateX(-50%) scale(var(--viewer-scale,1))!important;
+  transform-origin:top center!important;
+}
+body.scorebook-view .pv2-page{
+  margin:0 auto!important;
+}

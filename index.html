@@ -177,7 +177,9 @@
       .print-score-part{position:absolute;z-index:3;top:9px;width:24px;height:36px;transform:translateX(-50%)}.print-score-part svg{width:100%;height:100%;overflow:visible}
     }
     @media print{.measure.on .note b{background:transparent!important}}
-  </style>
+  
+body.scorebook-view-mode{margin:0;background:#2b2825;overflow:auto}body.scorebook-view-mode>main.app{position:absolute!important;left:-100000px!important;top:0!important;width:1200px!important;visibility:hidden!important}body.scorebook-view-mode .shian-print-v2{display:block!important;width:min(196mm,calc(100vw - 120px));margin:24px auto 90px;background:#fff;color:#332c25;box-shadow:0 8px 30px #0008}body.scorebook-view-mode .pv2-page{display:none!important;position:relative;width:196mm;min-height:283mm;background:#fff;overflow:hidden;transform-origin:top left}body.scorebook-view-mode .pv2-page.scorebook-current-page{display:block!important}.scorebook-view-nav{position:fixed;z-index:99999;left:0;right:0;bottom:14px;display:flex;justify-content:center;align-items:center;gap:12px;pointer-events:none}.scorebook-view-nav button,.scorebook-view-nav span{pointer-events:auto}.scorebook-view-nav button{min-width:48px;height:48px;border:1px solid #ffffff88;border-radius:12px;background:#221f1dcc;color:#fff;font-size:28px}.scorebook-view-nav button:disabled{opacity:.3}.scorebook-view-nav .back{width:auto;padding:0 16px;font-size:14px}.scorebook-view-count{padding:10px 14px;border-radius:999px;background:#221f1dcc;color:#fff;font-weight:700}@media(max-width:820px){body.scorebook-view-mode .shian-print-v2{width:calc(100vw - 72px);overflow:hidden}body.scorebook-view-mode .pv2-page{zoom:calc((100vw - 72px)/740)}}
+</style>
   <link rel="stylesheet" href="./print-v2.css?v=127">
 </head>
 <body class="score-page">
@@ -408,6 +410,14 @@ function migrateState(){
 }
 function load(){
   try{
+    const isScorebookView=new URLSearchParams(location.search).get("scorebookView")==="1";
+    const viewRaw=isScorebookView?sessionStorage.getItem("shian-scorebook-view-score"):null;
+    if(viewRaw){
+      sessionStorage.removeItem("shian-scorebook-view-score");
+      const handoff=JSON.parse(viewRaw);
+      const incoming=handoff?.format==="shian-bunkafu"?handoff.score:handoff;
+      if(incoming&&Array.isArray(incoming.notes)){state={...defaults,...incoming,scoreEditLayer:"notes"};migrateState();ensureTechniqueLayer();hasSaved=true;return}
+    }
     const handoffRaw=sessionStorage.getItem("shian-scorebook-edit-score");
     if(handoffRaw){
       sessionStorage.removeItem("shian-scorebook-edit-score");
@@ -1381,6 +1391,19 @@ document.querySelector('.page-link[href="./annotations.html"]')?.addEventListene
 window.addEventListener("pagehide",save);
 window.addEventListener("pageshow",()=>{try{const latest=JSON.parse(localStorage.getItem(KEY)||"null");if(latest){state={...defaults,...latest,scoreEditLayer:"notes"};migrateState();drawing=false;render()}}catch(error){console.warn("最新の譜面を読み込めませんでした。",error)}});
 render();if(!hasSaved&&!IS_ANNOTATION_PAGE)openNew();
+if(new URLSearchParams(location.search).get("scorebookView")==="1"&&!IS_ANNOTATION_PAGE){
+  document.body.classList.add("scorebook-view-mode");
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    try{applyPrintLayout();
+      const pages=[...document.querySelectorAll("#printRootV2 .pv2-page")];let current=0;
+      const nav=document.createElement("div");nav.className="scorebook-view-nav";nav.innerHTML='<button type="button" data-v="prev" aria-label="前のページ">‹</button><span class="scorebook-view-count"></span><button type="button" data-v="next" aria-label="次のページ">›</button><button type="button" data-v="back" class="back">譜面帳へ戻る</button>';document.body.appendChild(nav);
+      const show=()=>{pages.forEach((page,i)=>page.classList.toggle("scorebook-current-page",i===current));nav.querySelector(".scorebook-view-count").textContent=`${current+1} / ${pages.length}`;nav.querySelector('[data-v="prev"]').disabled=current===0;nav.querySelector('[data-v="next"]').disabled=current===pages.length-1};
+      nav.addEventListener("click",e=>{const a=e.target?.dataset?.v;if(a==="prev"&&current>0){current--;show()}if(a==="next"&&current<pages.length-1){current++;show()}if(a==="back")location.href="./scorebook.html"});
+      document.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"&&current>0){current--;show()}if(e.key==="ArrowRight"&&current<pages.length-1){current++;show()}if(e.key==="Escape")location.href="./scorebook.html"});
+      let sx=null;document.addEventListener("touchstart",e=>sx=e.changedTouches[0].clientX,{passive:true});document.addEventListener("touchend",e=>{if(sx===null)return;const d=e.changedTouches[0].clientX-sx;if(Math.abs(d)>45){if(d<0&&current<pages.length-1)current++;if(d>0&&current>0)current--;show()}sx=null},{passive:true});show();
+    }catch(error){console.error(error);alert("譜面を表示できませんでした。")}
+  }));
+}
 })();
 </script>
   <script src="./print-v2.js?v=138"></script>

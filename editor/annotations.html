@@ -923,5 +923,45 @@ render();if(!hasSaved&&!IS_ANNOTATION_PAGE)openNew();
 </script>
 <script>
 (()=>{const h=document.querySelector('.scorebook-return-header');if(!h)return;const q=new URLSearchParams(location.search);const pick=()=>{if(q.get('scorebookView')==='1'){return document.querySelector('.pv2-page.viewer-current')||document.querySelector('.pv2-page')}return document.querySelector('.app-shell')||document.querySelector('main.app')};const sync=()=>{const t=pick();if(!t)return;const r=t.getBoundingClientRect();if(r.width>0)h.style.setProperty('--scorebook-header-width',Math.min(r.width,innerWidth-20)+'px')};addEventListener('resize',()=>requestAnimationFrame(sync),{passive:true});new MutationObserver(()=>requestAnimationFrame(sync)).observe(document.body,{subtree:true,attributes:true,attributeFilter:['class','style']});requestAnimationFrame(()=>requestAnimationFrame(sync));setTimeout(sync,250);setTimeout(sync,700)})();</script>
+
+<script id="scorebook-annotations-lock-v67">
+(()=>{
+  if(new URLSearchParams(location.search).get("from")!=="scorebook") return;
+  const norm=s=>String(s||"").replace(/\s+/g,"").trim();
+
+  function apply(){
+    const topActions=document.querySelector(".head .actions");
+    if(!topActions) return;
+
+    let locked=[];
+    [...topActions.querySelectorAll("button")].forEach(b=>{
+      const t=norm(b.textContent);
+      const isNew=(t==="新規"||t==="＋新規作成"||t==="新規作成");
+      const isLoad=(t==="読込"||t==="読み込む"||t==="取り込む"||t==="文化譜を読込");
+      if(isNew||isLoad){
+        b.disabled=true;
+        b.setAttribute("aria-disabled","true");
+        b.classList.add("scorebook-locked-control");
+        b.style.cursor="not-allowed";
+        b.style.opacity=".46";
+        b.style.filter="grayscale(1)";
+        locked.push(b);
+      }
+    });
+
+    if(locked.length&&!document.getElementById("scorebook-ann-lock-note-v67")){
+      const note=document.createElement("small");
+      note.id="scorebook-ann-lock-note-v67";
+      note.textContent="譜面帳から開いているため、新規・読込は使用できません";
+      note.style.cssText="display:block;width:100%;margin-top:4px;color:#756b63;font-size:11px;text-align:right";
+      topActions.appendChild(note);
+    }
+  }
+
+  addEventListener("DOMContentLoaded",apply,{once:true});
+  addEventListener("pageshow",apply);
+  setTimeout(apply,300);
+})();
+</script>
 </body>
 </html>

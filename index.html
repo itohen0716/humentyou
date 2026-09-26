@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵 v0.4</title>
+<title>文化譜面帳｜絲庵 v0.5</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -19,9 +19,15 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 .title{font-size:17px;flex:1;min-width:120px}.actions{display:flex;align-items:center;gap:7px}.actions button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 12px;font-weight:700;color:#43362e}
 .actions .view{background:var(--blue2);border-color:#9fc1ce;color:#315f70}.delete{font-size:10px!important;border:0!important;background:transparent!important;color:#8a776b!important;padding:4px!important}
 .empty{text-align:center;color:#8a776b;padding:42px 10px;font-size:14px}
-dialog{border:1px solid var(--line);border-radius:14px;padding:0;max-width:420px;width:calc(100% - 32px);box-shadow:0 12px 40px #0003}dialog::backdrop{background:#0005}
-.modal{padding:20px}.modal h2{font-size:19px;margin:0 0 15px}.field{margin:12px 0}.field label{display:block;font-size:12px;margin-bottom:5px}.field input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:15px}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}.modal-actions button{padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:#fff}.modal-actions .primary{background:var(--blue);border-color:var(--blue);color:white;font-weight:700}
-.note{font-size:11px;color:#7d6e65;line-height:1.55}
+dialog{position:fixed;inset:0;margin:auto;border:1px solid #d8c6b5;border-radius:16px;padding:0;max-width:460px;width:calc(100% - 36px);background:#fffdfa;box-shadow:0 18px 55px #0006}
+dialog[open]{display:block}
+dialog::backdrop{background:rgba(43,35,29,.52);backdrop-filter:blur(1px)}
+.modal{padding:24px 26px 22px}.modal h2{font-size:21px;font-weight:600;margin:0 0 18px;border-bottom:1px solid #eadfd4;padding-bottom:12px}
+.field{margin:14px 0}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:#67574d}
+.field input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px;background:white}
+.song-name{padding:10px 12px;background:#f3ece4;border:1px solid #e2d4c7;border-radius:8px;font-size:16px;line-height:1.45;word-break:break-word}
+.modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:19px}.modal-actions button{padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}.modal-actions .primary{background:var(--blue);border-color:var(--blue);color:white;font-weight:700}
+.note{font-size:12px;color:#7d6e65;line-height:1.65;margin:10px 0 0}
 @media(max-width:620px){.app{padding:9px 10px 28px}.brand h1{font-size:21px}.desc{display:none}.add{padding:10px 12px}.card{align-items:flex-start;flex-wrap:wrap}.title{flex-basis:100%}.actions{width:100%;justify-content:flex-start}.actions button{padding:8px 9px}}
 </style>
 </head>
@@ -53,9 +59,9 @@ dialog{border:1px solid var(--line);border-radius:14px;padding:0;max-width:420px
 
 <dialog id="readingDialog"><form method="dialog" class="modal" id="readingForm">
 <h2>曲名のよみを入力</h2>
-<div class="field"><label>曲名</label><input id="modalTitle" readonly></div>
+<div class="field"><label>曲名</label><div class="song-name" id="modalTitle"></div></div>
 <div class="field"><label for="modalReading">よみ（ひらがな）</label><input id="modalReading" autocomplete="off" placeholder="例：こんぴらふねふね" required></div>
-<p class="note">漢字を含む曲名は、50音順に正しく並べるため、最初の登録時だけ「よみ」を入力してください。</p>
+<p class="note">50音順に正しく並べるため、この曲の「よみ」だけ入力してください。最初の登録時だけ必要です。</p>
 <div class="modal-actions"><button value="cancel">キャンセル</button><button class="primary" value="default" id="registerBtn">登録</button></div>
 </form></dialog>
 
@@ -145,7 +151,7 @@ file.onchange=async()=>{
   const title=titleFrom(data);if(!title)throw new Error("曲名が見つかりません。");
   const reading=readingFrom(data,title);
   if(reading){finishAdd(data,title,reading)}
-  else{pending={data,title};$("#modalTitle").value=title;$("#modalReading").value="";$("#readingDialog").showModal();setTimeout(()=>$("#modalReading").focus(),50)}
+  else{pending={data,title};$("#modalTitle").textContent=title;$("#modalReading").value="";$("#readingDialog").showModal();setTimeout(()=>$("#modalReading").focus(),50)}
  }catch(e){alert("文化譜を追加できませんでした。\\n"+e.message)}
 };
 $("#readingDialog").addEventListener("close",()=>{

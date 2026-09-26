@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵 v0.9</title>
+<title>文化譜面帳｜絲庵 v1.0</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -29,6 +29,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 .song-name{padding:10px 12px;background:#f3ece4;border:1px solid #e2d4c7;border-radius:8px;font-size:16px;line-height:1.45;word-break:break-word}
 .modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:19px}.modal-actions button{padding:9px 16px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer}.modal-actions .primary{background:var(--blue);border-color:var(--blue);color:white;font-weight:700}
 .note{font-size:12px;color:#7d6e65;line-height:1.65;margin:10px 0 0}
+.view-options{display:grid;gap:10px;margin-top:12px}.view-option{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 12px;background:#f7f1ea;border:1px solid #e2d4c7;border-radius:9px}.view-option span{font-size:14px}.view-option input{width:20px;height:20px;accent-color:var(--blue)}.view-option.disabled{opacity:.45}.view-help{font-size:11px;color:#7d6e65;line-height:1.55;margin:9px 0 0}
 @media(max-width:620px){.app{padding:9px 10px 28px}.brand h1{font-size:21px}.desc{display:none}.add{padding:10px 12px}.card{align-items:flex-start;flex-wrap:wrap}.title{flex-basis:100%}.actions{width:100%;justify-content:flex-start}.actions button{padding:8px 9px}}
 </style>
 </head>
@@ -55,7 +56,8 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
   <input class="search" id="search" type="search" placeholder="曲名を検索">
 </section>
 <main class="list" id="list"></main>
-<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v0.9</div>
+<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v1.0</div>
+<div class="popup-overlay" id="viewDialog" aria-hidden="true"><div class="popup-center"><div class="popup-card" role="dialog" aria-modal="true"><h2>譜面に表示するもの</h2><div class="song-name" id="viewSongTitle"></div><div class="view-options" id="viewOptions"></div><p class="view-help">チェックを外した項目は、この閲覧時だけ非表示になります。保存済みの文化譜データは変更しません。</p><div class="modal-actions"><button type="button" id="viewCancel">キャンセル</button><button type="button" class="primary" id="viewGo">GO：譜面を見る</button></div></div></div></div>
 <input id="file" type="file" accept=".json,application/json" hidden>
 </div>
 
@@ -79,7 +81,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 (()=>{
 const KEY="shian-scorebook-library-v2";
 const ROWS=["すべて","あ","か","さ","た","な","は","ま","や","ら","わ"];
-let active="すべて", pending=null, duplicateIndex=-1;
+let active="すべて", pending=null, duplicateIndex=-1, pendingView=null;
 const $=s=>document.querySelector(s), list=$("#list"), file=$("#file"), collator=new Intl.Collator("ja",{sensitivity:"base",numeric:true});
 
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(x)?x:[]}catch{return []}}
@@ -122,6 +124,17 @@ function finishAdd(data,title,reading){
  if(duplicateIndex>=0){$("#duplicateText").textContent="「"+title+"」は譜面帳に登録済みです。更新しますか？";openPopup($("#duplicateDialog"));return}
  lib.push(makeItem(data,title,reading));save(lib);pending=null;render();
 }
+function scoreOfPayload(payload){return payload&&payload.score&&typeof payload.score==="object"?payload.score:payload}
+function hasLyrics(score){return Array.isArray(score?.lyrics)&&score.lyrics.some(x=>String(x||"").trim())}
+function hasVocal(score){return Array.isArray(score?.vocalNotes)&&score.vocalNotes.length>0}
+function layerLabel(layer,index){if(layer?.name)return String(layer.name);if(layer?.label)return String(layer.label);if(layer?.id==="technique-layer")return "奏法";return "書き込み"+(index+1)}
+function openViewOptions(item){
+ const score=scoreOfPayload(item.payload)||{},box=$("#viewOptions");pendingView=item;$("#viewSongTitle").textContent=item.title;box.innerHTML="";
+ const add=(key,label,checked,enabled=true)=>{const row=document.createElement("label");row.className="view-option"+(enabled?"":" disabled");const name=document.createElement("span");name.textContent=label;const input=document.createElement("input");input.type="checkbox";input.dataset.viewKey=key;input.checked=checked;input.disabled=!enabled;row.append(name,input);box.append(row)};
+ add("lyrics","歌詞",score.lyricsVisible!==false,hasLyrics(score));add("vocal","唄",score.vocalVisible!==false,hasVocal(score));
+ (Array.isArray(score.layers)?score.layers:[]).forEach((layer,i)=>{const tech=layer?.id==="technique-layer",items=Array.isArray(layer?.items)&&layer.items.length>0;add("layer:"+i,layerLabel(layer,i),layer?.visible!==false,tech||items)});
+ openPopup($("#viewDialog"));
+}
 function render(){
  let lib=load().sort((a,b)=>collator.compare(hira(a.reading||a.title),hira(b.reading||b.title)));
  const q=hira($("#search").value);
@@ -132,7 +145,7 @@ function render(){
   const card=document.createElement("article");card.className="card";
   const t=document.createElement("div");t.className="title";t.textContent=x.title;
   const a=document.createElement("div");a.className="actions";
-  const view=document.createElement("button");view.className="view";view.textContent="譜面を見る";view.disabled=true;view.title="次の段階で実装します";
+  const view=document.createElement("button");view.className="view";view.textContent="譜面を見る";view.title="表示する項目を選んで譜面を見る";view.onclick=()=>openViewOptions(x);
   const play=document.createElement("button");play.textContent="▶ 自動演奏";play.title="絲庵譜プレーヤーで開く";
   play.onclick=()=>{
     try{
@@ -184,6 +197,15 @@ $("#duplicateUpdate").onclick=()=>{
  closePopup($("#duplicateDialog"));pending=null;duplicateIndex=-1;
 };
 $("#modalReading").addEventListener("keydown",e=>{if(e.key==="Enter")$("#registerBtn").click()});
+$("#viewCancel").onclick=()=>{closePopup($("#viewDialog"));pendingView=null};
+$("#viewGo").onclick=()=>{
+ if(!pendingView)return;
+ try{
+  const cloned=JSON.parse(JSON.stringify(pendingView.payload)),score=scoreOfPayload(cloned);
+  $("#viewOptions").querySelectorAll("input[data-view-key]").forEach(input=>{if(input.disabled)return;const key=input.dataset.viewKey;if(key==="lyrics")score.lyricsVisible=input.checked;else if(key==="vocal")score.vocalVisible=input.checked;else if(key.startsWith("layer:")){const i=Number(key.slice(6));if(Array.isArray(score.layers)&&score.layers[i]){score.layers[i].visible=input.checked;score.layers[i].printEnabled=input.checked}}});
+  sessionStorage.setItem("shian-scorebook-view-score",JSON.stringify(cloned));closePopup($("#viewDialog"));pendingView=null;location.href="./viewer.html";
+ }catch(error){alert("譜面を開く準備ができませんでした。\\n"+(error?.message||error))}
+};
 render();
 })();
 </script>

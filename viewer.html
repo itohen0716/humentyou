@@ -109,7 +109,8 @@ html,body{margin:0;min-height:100%;background:#e6dfd5;color:#332c25;font-family:
      let current=0;
 
      // Physical A4-ish print dimensions used by the culture-score print renderer.
-     const MM_TO_PX=96/25.4, PAGE_W=196*MM_TO_PX, PAGE_H=283*MM_TO_PX;
+     const MM_TO_PX=96/25.4, BASE_PAGE_W=196*MM_TO_PX, PAGE_H=283*MM_TO_PX;
+     let actualPageW=BASE_PAGE_W;
 
      function pageDocument(markup){
        return `<!doctype html><html><head>
@@ -118,9 +119,9 @@ html,body{margin:0;min-height:100%;background:#e6dfd5;color:#332c25;font-family:
        <style>
        @font-face{font-family:"Shian Score BIZ UDPMincho";src:url("${EDITOR_URL}fonts/BIZUDPMincho-Regular.ttf") format("truetype")}
        @font-face{font-family:"Shian 851 MkPOP";src:url("${EDITOR_URL}fonts/851MkPOP_101.ttf") format("truetype")}
-       html,body{margin:0;padding:0;width:${PAGE_W}px;min-height:${PAGE_H}px;background:#fff;overflow:hidden}
+       html,body{margin:0;padding:0;width:auto;min-width:${BASE_PAGE_W}px;min-height:${PAGE_H}px;background:#fff;overflow:visible}
        .shian-print-v2{display:block!important;background:#fff;color:#332c25;font-family:"Yu Gothic",sans-serif}
-       .pv2-page{display:block!important;width:196mm!important;min-height:283mm!important;overflow:hidden!important;background:#fff!important;color:#332c25!important}
+       .pv2-page{display:block!important;width:196mm!important;min-width:196mm!important;min-height:283mm!important;overflow:visible!important;background:#fff!important;color:#332c25!important;padding-right:8mm!important}
        </style></head><body><div class="shian-print-v2">${markup}</div>
        <script>
        // Activate only the print renderer rules INSIDE this isolated page iframe.
@@ -142,16 +143,25 @@ html,body{margin:0;min-height:100%;background:#e6dfd5;color:#332c25;font-family:
      function fit(){
        const maxW=Math.min(window.innerWidth-24,1120);
        const maxH=Math.max(420,window.innerHeight-92);
-       const scale=Math.min(1,maxW/PAGE_W,maxH/PAGE_H);
-       paperFrame.style.width=PAGE_W+"px";
+       const scale=Math.min(1,maxW/actualPageW,maxH/PAGE_H);
+       paperFrame.style.width=actualPageW+"px";
        paperFrame.style.height=PAGE_H+"px";
        paperFrame.style.transform=`scale(${scale})`;
-       shell.style.width=(PAGE_W*scale)+"px";
+       shell.style.width=(actualPageW*scale)+"px";
        shell.style.height=(PAGE_H*scale)+"px";
      }
 
      function show(i){
        current=Math.max(0,Math.min(snapshots.length-1,i));
+       paperFrame.onload=()=>{
+         try{
+           const d=paperFrame.contentDocument;
+           const page=d?.querySelector(".pv2-page");
+           const measured=Math.max(BASE_PAGE_W,d?.documentElement?.scrollWidth||0,d?.body?.scrollWidth||0,page?.scrollWidth||0);
+           actualPageW=measured+12;
+         }catch{actualPageW=BASE_PAGE_W+36}
+         fit();
+       };
        paperFrame.srcdoc=pageDocument(snapshots[current]);
        document.getElementById("count").textContent=`${current+1} / ${snapshots.length} ページ`;
        document.getElementById("prev").disabled=current===0;

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵 v0.6</title>
+<title>文化譜面帳｜絲庵 v0.7</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -19,9 +19,10 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 .title{font-size:17px;flex:1;min-width:120px}.actions{display:flex;align-items:center;gap:7px}.actions button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 12px;font-weight:700;color:#43362e}
 .actions .view{background:var(--blue2);border-color:#9fc1ce;color:#315f70}.delete{font-size:10px!important;border:0!important;background:transparent!important;color:#8a776b!important;padding:4px!important}
 .empty{text-align:center;color:#8a776b;padding:42px 10px;font-size:14px}
-.popup-overlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(43,35,29,.55)}
-.popup-overlay.open{display:flex}
-.popup-card{width:min(460px,100%);background:#fffdfa;border:1px solid #d8c6b5;border-radius:16px;box-shadow:0 18px 55px #0006;padding:24px 26px 22px}
+.popup-overlay{position:fixed;inset:0;z-index:9999;display:none;background:rgba(43,35,29,.55)}
+.popup-overlay.open{display:block}
+.popup-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:calc(100% - 36px);max-width:460px}
+.popup-card{display:block;width:100%;background:#fffdfa;border:1px solid #d8c6b5;border-radius:16px;box-shadow:0 18px 55px rgba(0,0,0,.38);padding:24px 26px 22px}
 .popup-card h2{font-size:21px;font-weight:600;margin:0 0 18px;border-bottom:1px solid #eadfd4;padding-bottom:12px}
 .field{margin:14px 0}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:#67574d}
 .field input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px;background:white}
@@ -54,24 +55,25 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
   <input class="search" id="search" type="search" placeholder="曲名を検索">
 </section>
 <main class="list" id="list"></main>
+<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v0.7</div>
 <input id="file" type="file" accept=".json,application/json" hidden>
 </div>
 
 <div class="popup-overlay" id="readingDialog" aria-hidden="true">
-<div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="readingTitle">
+<div class="popup-center"><div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="readingTitle">
 <h2 id="readingTitle">曲名のよみを入力</h2>
 <div class="field"><label>曲名</label><div class="song-name" id="modalTitle"></div></div>
 <div class="field"><label for="modalReading">よみ（ひらがな）</label><input id="modalReading" autocomplete="off" placeholder="例：こんぴらふねふね"></div>
 <p class="note">50音順に正しく並べるため、この曲の「よみ」だけ入力してください。最初の登録時だけ必要です。</p>
 <div class="modal-actions"><button type="button" id="readingCancel">キャンセル</button><button type="button" class="primary" id="registerBtn">登録</button></div>
-</div></div>
+</div></div></div>
 
 <div class="popup-overlay" id="duplicateDialog" aria-hidden="true">
-<div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle">
+<div class="popup-center"><div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle">
 <h2 id="duplicateTitle">すでに登録されています</h2><p id="duplicateText"></p>
 <p class="note">更新すると、譜面帳に登録されている同名の文化譜データを今回選んだJSONで置き換えます。</p>
 <div class="modal-actions"><button type="button" id="duplicateCancel">キャンセル</button><button type="button" class="primary" id="duplicateUpdate">更新</button></div>
-</div></div>
+</div></div></div>
 
 <script>
 (()=>{

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵 v0.5</title>
+<title>文化譜面帳｜絲庵 v0.6</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -19,10 +19,10 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
 .title{font-size:17px;flex:1;min-width:120px}.actions{display:flex;align-items:center;gap:7px}.actions button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 12px;font-weight:700;color:#43362e}
 .actions .view{background:var(--blue2);border-color:#9fc1ce;color:#315f70}.delete{font-size:10px!important;border:0!important;background:transparent!important;color:#8a776b!important;padding:4px!important}
 .empty{text-align:center;color:#8a776b;padding:42px 10px;font-size:14px}
-dialog{position:fixed;inset:0;margin:auto;border:1px solid #d8c6b5;border-radius:16px;padding:0;max-width:460px;width:calc(100% - 36px);background:#fffdfa;box-shadow:0 18px 55px #0006}
-dialog[open]{display:block}
-dialog::backdrop{background:rgba(43,35,29,.52);backdrop-filter:blur(1px)}
-.modal{padding:24px 26px 22px}.modal h2{font-size:21px;font-weight:600;margin:0 0 18px;border-bottom:1px solid #eadfd4;padding-bottom:12px}
+.popup-overlay{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(43,35,29,.55)}
+.popup-overlay.open{display:flex}
+.popup-card{width:min(460px,100%);background:#fffdfa;border:1px solid #d8c6b5;border-radius:16px;box-shadow:0 18px 55px #0006;padding:24px 26px 22px}
+.popup-card h2{font-size:21px;font-weight:600;margin:0 0 18px;border-bottom:1px solid #eadfd4;padding-bottom:12px}
 .field{margin:14px 0}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:#67574d}
 .field input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font-size:15px;background:white}
 .song-name{padding:10px 12px;background:#f3ece4;border:1px solid #e2d4c7;border-radius:8px;font-size:16px;line-height:1.45;word-break:break-word}
@@ -57,19 +57,21 @@ dialog::backdrop{background:rgba(43,35,29,.52);backdrop-filter:blur(1px)}
 <input id="file" type="file" accept=".json,application/json" hidden>
 </div>
 
-<dialog id="readingDialog"><form method="dialog" class="modal" id="readingForm">
-<h2>曲名のよみを入力</h2>
+<div class="popup-overlay" id="readingDialog" aria-hidden="true">
+<div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="readingTitle">
+<h2 id="readingTitle">曲名のよみを入力</h2>
 <div class="field"><label>曲名</label><div class="song-name" id="modalTitle"></div></div>
-<div class="field"><label for="modalReading">よみ（ひらがな）</label><input id="modalReading" autocomplete="off" placeholder="例：こんぴらふねふね" required></div>
+<div class="field"><label for="modalReading">よみ（ひらがな）</label><input id="modalReading" autocomplete="off" placeholder="例：こんぴらふねふね"></div>
 <p class="note">50音順に正しく並べるため、この曲の「よみ」だけ入力してください。最初の登録時だけ必要です。</p>
-<div class="modal-actions"><button value="cancel">キャンセル</button><button class="primary" value="default" id="registerBtn">登録</button></div>
-</form></dialog>
+<div class="modal-actions"><button type="button" id="readingCancel">キャンセル</button><button type="button" class="primary" id="registerBtn">登録</button></div>
+</div></div>
 
-<dialog id="duplicateDialog"><form method="dialog" class="modal">
-<h2>すでに登録されています</h2><p id="duplicateText"></p>
+<div class="popup-overlay" id="duplicateDialog" aria-hidden="true">
+<div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="duplicateTitle">
+<h2 id="duplicateTitle">すでに登録されています</h2><p id="duplicateText"></p>
 <p class="note">更新すると、譜面帳に登録されている同名の文化譜データを今回選んだJSONで置き換えます。</p>
-<div class="modal-actions"><button value="cancel">キャンセル</button><button class="primary" value="update">更新</button></div>
-</form></dialog>
+<div class="modal-actions"><button type="button" id="duplicateCancel">キャンセル</button><button type="button" class="primary" id="duplicateUpdate">更新</button></div>
+</div></div>
 
 <script>
 (()=>{
@@ -110,10 +112,12 @@ function valid(data){
 function makeItem(data,title,reading,old={}){
  return {...old,id:old.id||crypto.randomUUID(),title,reading:hira(reading),payload:data,updatedAt:new Date().toISOString(),createdAt:old.createdAt||new Date().toISOString()};
 }
+function openPopup(el){el.classList.add("open");el.setAttribute("aria-hidden","false")}
+function closePopup(el){el.classList.remove("open");el.setAttribute("aria-hidden","true")}
 function finishAdd(data,title,reading){
  let lib=load(); duplicateIndex=lib.findIndex(x=>x.title===title);
  pending={data,title,reading};
- if(duplicateIndex>=0){$("#duplicateText").textContent="「"+title+"」は譜面帳に登録済みです。更新しますか？";$("#duplicateDialog").showModal();return}
+ if(duplicateIndex>=0){$("#duplicateText").textContent="「"+title+"」は譜面帳に登録済みです。更新しますか？";openPopup($("#duplicateDialog"));return}
  lib.push(makeItem(data,title,reading));save(lib);pending=null;render();
 }
 function render(){
@@ -151,23 +155,25 @@ file.onchange=async()=>{
   const title=titleFrom(data);if(!title)throw new Error("曲名が見つかりません。");
   const reading=readingFrom(data,title);
   if(reading){finishAdd(data,title,reading)}
-  else{pending={data,title};$("#modalTitle").textContent=title;$("#modalReading").value="";$("#readingDialog").showModal();setTimeout(()=>$("#modalReading").focus(),50)}
+  else{pending={data,title};$("#modalTitle").textContent=title;$("#modalReading").value="";openPopup($("#readingDialog"));setTimeout(()=>$("#modalReading").focus(),50)}
  }catch(e){alert("文化譜を追加できませんでした。\\n"+e.message)}
 };
-$("#readingDialog").addEventListener("close",()=>{
- if($("#readingDialog").returnValue==="default"&&pending){
-  const r=$("#modalReading").value.trim();
-  if(!r){pending=null;return}
-  const p=pending;pending=null;finishAdd(p.data,p.title,r);
- } else pending=null;
-});
-$("#duplicateDialog").addEventListener("close",()=>{
- if($("#duplicateDialog").returnValue==="update"&&pending&&duplicateIndex>=0){
-  const lib=load(), old=lib[duplicateIndex];
+$("#readingCancel").onclick=()=>{closePopup($("#readingDialog"));pending=null};
+$("#registerBtn").onclick=()=>{
+ if(!pending)return;
+ const r=$("#modalReading").value.trim();
+ if(!r){$("#modalReading").focus();return}
+ const p=pending;pending=null;closePopup($("#readingDialog"));finishAdd(p.data,p.title,r);
+};
+$("#duplicateCancel").onclick=()=>{closePopup($("#duplicateDialog"));pending=null;duplicateIndex=-1};
+$("#duplicateUpdate").onclick=()=>{
+ if(pending&&duplicateIndex>=0){
+  const lib=load(),old=lib[duplicateIndex];
   lib[duplicateIndex]=makeItem(pending.data,pending.title,pending.reading||old.reading,old);save(lib);render();
  }
- pending=null;duplicateIndex=-1;
-});
+ closePopup($("#duplicateDialog"));pending=null;duplicateIndex=-1;
+};
+$("#modalReading").addEventListener("keydown",e=>{if(e.key==="Enter")$("#registerBtn").click()});
 render();
 })();
 </script>

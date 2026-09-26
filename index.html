@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>文化譜面帳｜絲庵</title>
+<style>
+:root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
+.app{max-width:980px;margin:auto;padding:10px 18px 36px}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.brand h1{font-size:25px;font-weight:500;margin:0 0 5px}.subline{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.en{font:10px/1.2 Arial,sans-serif;letter-spacing:.22em;color:#9a725d}.desc{font-size:12px;color:#77675d}
+.add{border:0;border-radius:9px;background:var(--blue);color:white;font-weight:700;padding:12px 17px;cursor:pointer;white-space:nowrap}
+.tools{padding:16px 0 8px}.kana{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+.kana button{min-width:36px;height:32px;border:1px solid var(--line);background:var(--paper);border-radius:18px;font-size:14px;cursor:pointer}
+.kana button.active{background:#30271f;color:#fff;border-color:#30271f}.search{display:block;width:min(360px,100%);margin:9px auto 0;border:1px solid var(--line);border-radius:9px;background:white;padding:10px 13px;font-size:14px}
+.list{display:grid;gap:9px}.card{min-height:55px;background:var(--paper);border:1px solid var(--line);border-radius:13px;box-shadow:0 1px 3px #0000000d;padding:10px 14px;display:flex;align-items:center;gap:12px}
+.title{font-size:17px;flex:1;min-width:120px}.actions{display:flex;align-items:center;gap:7px}.actions button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 12px;font-weight:700;color:#43362e}
+.actions .view{background:var(--blue2);border-color:#9fc1ce;color:#315f70}.delete{font-size:10px!important;border:0!important;background:transparent!important;color:#8a776b!important;padding:4px!important}
+.empty{text-align:center;color:#8a776b;padding:42px 10px;font-size:14px}
+dialog{border:1px solid var(--line);border-radius:14px;padding:0;max-width:420px;width:calc(100% - 32px);box-shadow:0 12px 40px #0003}dialog::backdrop{background:#0005}
+.modal{padding:20px}.modal h2{font-size:19px;margin:0 0 15px}.field{margin:12px 0}.field label{display:block;font-size:12px;margin-bottom:5px}.field input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:15px}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}.modal-actions button{padding:9px 14px;border-radius:8px;border:1px solid var(--line);background:#fff}.modal-actions .primary{background:var(--blue);border-color:var(--blue);color:white;font-weight:700}
+.note{font-size:11px;color:#7d6e65;line-height:1.55}
+@media(max-width:620px){.app{padding:9px 10px 28px}.brand h1{font-size:21px}.desc{display:none}.add{padding:10px 12px}.card{align-items:flex-start;flex-wrap:wrap}.title{flex-basis:100%}.actions{width:100%;justify-content:flex-start}.actions button{padding:8px 9px}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <div class="brand"><h1>文化譜面帳</h1><div class="subline"><span class="en">SHIAN SCORE BOOK</span><span class="desc">文化譜を「見る・演奏する・編集する」ための譜面帳</span></div></div>
+  <button class="add" id="addBtn">＋ 文化譜を追加</button>
+</header>
+<section class="tools">
+  <div class="kana" id="kana"></div>
+  <input class="search" id="search" type="search" placeholder="曲名を検索">
+</section>
+<main class="list" id="list"></main>
+<input id="file" type="file" accept=".json,application/json" hidden>
+</div>
+
+<dialog id="readingDialog"><form method="dialog" class="modal" id="readingForm">
+<h2>曲名のよみを入力</h2>
+<div class="field"><label>曲名</label><input id="modalTitle" readonly></div>
+<div class="field"><label for="modalReading">よみ（ひらがな）</label><input id="modalReading" autocomplete="off" placeholder="例：こんぴらふねふね" required></div>
+<p class="note">漢字を含む曲名は、50音順に正しく並べるため、最初の登録時だけ「よみ」を入力してください。</p>
+<div class="modal-actions"><button value="cancel">キャンセル</button><button class="primary" value="default" id="registerBtn">登録</button></div>
+</form></dialog>
+
+<dialog id="duplicateDialog"><form method="dialog" class="modal">
+<h2>すでに登録されています</h2><p id="duplicateText"></p>
+<p class="note">更新すると、譜面帳に登録されている同名の文化譜データを今回選んだJSONで置き換えます。</p>
+<div class="modal-actions"><button value="cancel">キャンセル</button><button class="primary" value="update">更新</button></div>
+</form></dialog>
+
+<script>
+(()=>{
+const KEY="shian-scorebook-library-v2";
+const ROWS=["すべて","あ","か","さ","た","な","は","ま","や","ら","わ"];
+let active="すべて", pending=null, duplicateIndex=-1;
+const $=s=>document.querySelector(s), list=$("#list"), file=$("#file"), collator=new Intl.Collator("ja",{sensitivity:"base",numeric:true});
+
+function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(x)?x:[]}catch{return []}}
+function save(x){localStorage.setItem(KEY,JSON.stringify(x))}
+function hira(s=""){return s.normalize("NFKC").replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)).replace(/\s+/g,"").toLowerCase()}
+function baseKana(s=""){return hira(s).normalize("NFD").replace(/[\u3099\u309A]/g,"").normalize("NFC").replace(/[ぁぃぅぇぉ]/g,c=>({"ぁ":"あ","ぃ":"い","ぅ":"う","ぇ":"え","ぉ":"お"}[c])).replace(/[ゃゅょ]/g,c=>({"ゃ":"や","ゅ":"ゆ","ょ":"よ"}[c])).replace("っ","つ")}
+function rowOf(reading){
+ const c=baseKana(reading)[0]||"";
+ const map={あ:"あ",い:"あ",う:"あ",え:"あ",お:"あ",か:"か",き:"か",く:"か",け:"か",こ:"か",さ:"さ",し:"さ",す:"さ",せ:"さ",そ:"さ",た:"た",ち:"た",つ:"た",て:"た",と:"た",な:"な",に:"な",ぬ:"な",ね:"な",の:"な",は:"は",ひ:"は",ふ:"は",へ:"は",ほ:"は",ま:"ま",み:"ま",む:"ま",め:"ま",も:"ま",や:"や",ゆ:"や",よ:"や",ら:"ら",り:"ら",る:"ら",れ:"ら",ろ:"ら",わ:"わ",を:"わ",ん:"わ"};
+ return map[c]||"";
+}
+function kanaOnly(title){return /^[\u3040-\u309f\u30a0-\u30ffー・ 　]+$/.test(title)}
+function scoreFrom(data){return data&&data.score&&typeof data.score==="object"?data.score:data}
+function titleFrom(data){
+ const s=scoreFrom(data)||{};
+ return String(s.title||data.title||"").trim();
+}
+function readingFrom(data,title){
+ const s=scoreFrom(data)||{};
+ return String(s.reading||s.yomigana||s.kana||data.reading||data.yomigana||data.kana||(kanaOnly(title)?title:"")).trim();
+}
+function valid(data){const s=scoreFrom(data);return !!(data&&typeof data==="object"&&s&&typeof s==="object"&&Array.isArray(s.notes))}
+function makeItem(data,title,reading,old={}){
+ return {...old,id:old.id||crypto.randomUUID(),title,reading:hira(reading),payload:data,updatedAt:new Date().toISOString(),createdAt:old.createdAt||new Date().toISOString()};
+}
+function finishAdd(data,title,reading){
+ let lib=load(); duplicateIndex=lib.findIndex(x=>x.title===title);
+ pending={data,title,reading};
+ if(duplicateIndex>=0){$("#duplicateText").textContent="「"+title+"」は譜面帳に登録済みです。更新しますか？");$("#duplicateDialog").showModal();return}
+ lib.push(makeItem(data,title,reading));save(lib);pending=null;render();
+}
+function render(){
+ let lib=load().sort((a,b)=>collator.compare(hira(a.reading||a.title),hira(b.reading||b.title)));
+ const q=hira($("#search").value);
+ lib=lib.filter(x=>(active==="すべて"||rowOf(x.reading||x.title)===active)&&(!q||hira(x.title).includes(q)||hira(x.reading).includes(q)));
+ list.innerHTML="";
+ if(!lib.length){list.innerHTML='<div class="empty">登録されている文化譜はありません。</div>';return}
+ for(const x of lib){
+  const card=document.createElement("article");card.className="card";
+  const t=document.createElement("div");t.className="title";t.textContent=x.title;
+  const a=document.createElement("div");a.className="actions";
+  const view=document.createElement("button");view.className="view";view.textContent="譜面を見る";view.disabled=true;view.title="次の段階で実装します";
+  const play=document.createElement("button");play.textContent="▶ 自動演奏";play.disabled=true;play.title="次の段階で実装します";
+  const del=document.createElement("button");del.className="delete";del.textContent="譜面帳から削除";
+  del.onclick=()=>{if(confirm("「"+x.title+"」を譜面帳から削除しますか？\\n元のJSONファイルは削除されません。")){save(load().filter(y=>y.id!==x.id));render()}};
+  a.append(view,play,del);card.append(t,a);list.append(card);
+ }
+}
+const kana=$("#kana");
+ROWS.forEach(r=>{const b=document.createElement("button");b.textContent=r;b.dataset.row=r;if(r===active)b.classList.add("active");b.onclick=()=>{active=r;[...kana.children].forEach(x=>x.classList.toggle("active",x.dataset.row===r));render()};kana.append(b)});
+$("#search").addEventListener("input",render);
+$("#addBtn").onclick=()=>{file.value="";file.click()};
+file.onchange=async()=>{
+ const f=file.files[0];if(!f)return;
+ try{
+  const data=JSON.parse(await f.text());
+  if(!valid(data))throw new Error("文化譜JSONとして必要な譜面データ（notes）が確認できません。");
+  const title=titleFrom(data);if(!title)throw new Error("曲名が見つかりません。");
+  const reading=readingFrom(data,title);
+  if(reading){finishAdd(data,title,reading)}
+  else{pending={data,title};$("#modalTitle").value=title;$("#modalReading").value="";$("#readingDialog").showModal();setTimeout(()=>$("#modalReading").focus(),50)}
+ }catch(e){alert("文化譜を追加できませんでした。\\n"+e.message)}
+};
+$("#readingDialog").addEventListener("close",()=>{
+ if($("#readingDialog").returnValue==="default"&&pending){
+  const r=$("#modalReading").value.trim();
+  if(!r){pending=null;return}
+  const p=pending;pending=null;finishAdd(p.data,p.title,r);
+ } else pending=null;
+});
+$("#duplicateDialog").addEventListener("close",()=>{
+ if($("#duplicateDialog").returnValue==="update"&&pending&&duplicateIndex>=0){
+  const lib=load(), old=lib[duplicateIndex];
+  lib[duplicateIndex]=makeItem(pending.data,pending.title,pending.reading||old.reading,old);save(lib);render();
+ }
+ pending=null;duplicateIndex=-1;
+});
+render();
+})();
+</script>
+</body></html>

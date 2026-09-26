@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵</title>
+<title>文化譜面帳｜絲庵 v0.4</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -32,7 +32,19 @@ dialog{border:1px solid var(--line);border-radius:14px;padding:0;max-width:420px
   <button class="add" id="addBtn">＋ 文化譜を追加</button>
 </header>
 <section class="tools">
-  <div class="kana" id="kana"></div>
+  <div class="kana" id="kana">
+<button type="button" class="active" data-row="すべて">すべて</button>
+<button type="button" data-row="あ">あ</button>
+<button type="button" data-row="か">か</button>
+<button type="button" data-row="さ">さ</button>
+<button type="button" data-row="た">た</button>
+<button type="button" data-row="な">な</button>
+<button type="button" data-row="は">は</button>
+<button type="button" data-row="ま">ま</button>
+<button type="button" data-row="や">や</button>
+<button type="button" data-row="ら">ら</button>
+<button type="button" data-row="わ">わ</button>
+</div>
   <input class="search" id="search" type="search" placeholder="曲名を検索">
 </section>
 <main class="list" id="list"></main>
@@ -73,20 +85,29 @@ function kanaOnly(title){return /^[\u3040-\u309f\u30a0-\u30ffー・ 　]+$/.test
 function scoreFrom(data){return data&&data.score&&typeof data.score==="object"?data.score:data}
 function titleFrom(data){
  const s=scoreFrom(data)||{};
- return String(s.title||data.title||"").trim();
+ return String(s.title||data.title||data.name||data.scoreTitle||"").trim();
 }
 function readingFrom(data,title){
  const s=scoreFrom(data)||{};
  return String(s.reading||s.yomigana||s.kana||data.reading||data.yomigana||data.kana||(kanaOnly(title)?title:"")).trim();
 }
-function valid(data){const s=scoreFrom(data);return !!(data&&typeof data==="object"&&s&&typeof s==="object"&&Array.isArray(s.notes))}
+function valid(data){
+ if(!data||typeof data!=="object")return false;
+ if(data.format==="shian-bunkafu"&&data.score&&typeof data.score==="object")return true;
+ const s=scoreFrom(data);
+ return !!(s&&typeof s==="object"&&(
+   "title" in s||Array.isArray(s.notes)||Array.isArray(s.vocalNotes)||
+   Array.isArray(s.scoreParts)||Array.isArray(s.rowMeasureCounts)||
+   typeof s.rows==="number"||typeof s.measuresPerRow==="number"
+ ));
+}
 function makeItem(data,title,reading,old={}){
  return {...old,id:old.id||crypto.randomUUID(),title,reading:hira(reading),payload:data,updatedAt:new Date().toISOString(),createdAt:old.createdAt||new Date().toISOString()};
 }
 function finishAdd(data,title,reading){
  let lib=load(); duplicateIndex=lib.findIndex(x=>x.title===title);
  pending={data,title,reading};
- if(duplicateIndex>=0){$("#duplicateText").textContent="「"+title+"」は譜面帳に登録済みです。更新しますか？");$("#duplicateDialog").showModal();return}
+ if(duplicateIndex>=0){$("#duplicateText").textContent="「"+title+"」は譜面帳に登録済みです。更新しますか？";$("#duplicateDialog").showModal();return}
  lib.push(makeItem(data,title,reading));save(lib);pending=null;render();
 }
 function render(){
@@ -107,14 +128,20 @@ function render(){
  }
 }
 const kana=$("#kana");
-ROWS.forEach(r=>{const b=document.createElement("button");b.textContent=r;b.dataset.row=r;if(r===active)b.classList.add("active");b.onclick=()=>{active=r;[...kana.children].forEach(x=>x.classList.toggle("active",x.dataset.row===r));render()};kana.append(b)});
+kana.querySelectorAll("button[data-row]").forEach(b=>{
+ b.addEventListener("click",()=>{
+   active=b.dataset.row;
+   kana.querySelectorAll("button[data-row]").forEach(x=>x.classList.toggle("active",x===b));
+   render();
+ });
+});
 $("#search").addEventListener("input",render);
 $("#addBtn").onclick=()=>{file.value="";file.click()};
 file.onchange=async()=>{
  const f=file.files[0];if(!f)return;
  try{
   const data=JSON.parse(await f.text());
-  if(!valid(data))throw new Error("文化譜JSONとして必要な譜面データ（notes）が確認できません。");
+  if(!valid(data))throw new Error("文化譜JSONとして認識できません。文化譜作成アプリで保存したJSONを選んでください。");
   const title=titleFrom(data);if(!title)throw new Error("曲名が見つかりません。");
   const reading=readingFrom(data,title);
   if(reading){finishAdd(data,title,reading)}

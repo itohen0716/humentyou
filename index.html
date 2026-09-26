@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵 v0.7</title>
+<title>文化譜面帳｜絲庵 v0.8</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -55,7 +55,7 @@ header{display:flex;align-items:flex-start;justify-content:space-between;gap:16p
   <input class="search" id="search" type="search" placeholder="曲名を検索">
 </section>
 <main class="list" id="list"></main>
-<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v0.7</div>
+<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v0.8</div>
 <input id="file" type="file" accept=".json,application/json" hidden>
 </div>
 
@@ -133,7 +133,17 @@ function render(){
   const t=document.createElement("div");t.className="title";t.textContent=x.title;
   const a=document.createElement("div");a.className="actions";
   const view=document.createElement("button");view.className="view";view.textContent="譜面を見る";view.disabled=true;view.title="次の段階で実装します";
-  const play=document.createElement("button");play.textContent="▶ 自動演奏";play.disabled=true;play.title="次の段階で実装します";
+  const play=document.createElement("button");play.textContent="▶ 自動演奏";play.title="絲庵譜プレーヤーで開く";
+  play.onclick=()=>{
+    try{
+      sessionStorage.setItem("shian-scorebook-player-handoff",JSON.stringify({
+        version:1,scorebookId:x.id,title:x.title,payload:x.payload,createdAt:new Date().toISOString()
+      }));
+      location.href="./player.html";
+    }catch(error){
+      alert("自動演奏へ文化譜を渡せませんでした。\n"+(error?.message||error));
+    }
+  };
   const del=document.createElement("button");del.className="delete";del.textContent="譜面帳から削除";
   del.onclick=()=>{if(confirm("「"+x.title+"」を譜面帳から削除しますか？\\n元のJSONファイルは削除されません。")){save(load().filter(y=>y.id!==x.id));render()}};
   a.append(view,play,del);card.append(t,a);list.append(card);

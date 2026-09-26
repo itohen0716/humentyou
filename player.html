@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>自動演奏｜文化譜面帳</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5efe7}
+#bar{height:44px;display:flex;align-items:center;gap:12px;padding:0 12px;border-bottom:1px solid #d8c6b5;background:#fffdfa;box-sizing:border-box;font-family:"Yu Mincho","Hiragino Mincho ProN",serif}
+#back{border:1px solid #d8c6b5;border-radius:8px;background:white;padding:7px 12px;cursor:pointer}
+#status{font-size:12px;color:#75665c;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+iframe{display:block;border:0;width:100%;height:calc(100% - 44px);background:white}
+</style>
+</head>
+<body>
+<div id="bar"><button id="back" type="button">← 譜面帳へ戻る</button><span id="status">絲庵譜プレーヤーを開いています…</span></div>
+<iframe id="player" src="https://itohen0716.github.io/Shin-Player-/" title="絲庵譜プレーヤー"></iframe>
+<script>
+(()=>{
+ const KEY="shian-scorebook-player-handoff";
+ const frame=document.getElementById("player");
+ const status=document.getElementById("status");
+ document.getElementById("back").onclick=()=>location.href="./index.html";
+ let handoff=null;
+ try{handoff=JSON.parse(sessionStorage.getItem(KEY)||"null")}catch{}
+ if(!handoff||!handoff.payload){
+   status.textContent="演奏する文化譜が選択されていません。";
+   return;
+ }
+ status.textContent="「"+(handoff.title||"文化譜")+"」を読み込みます…";
+ frame.addEventListener("load",async()=>{
+   try{
+     const win=frame.contentWindow;
+     if(typeof win.importFile!=="function") throw new Error("プレーヤーの読込機能を確認できません。");
+     const file=new File([JSON.stringify(handoff.payload)],(handoff.title||"score")+".json",{type:"application/json"});
+     await win.importFile(file);
+     status.textContent="「"+(handoff.title||"文化譜")+"」を絲庵譜プレーヤーで開いています";
+   }catch(error){
+     console.error(error);
+     status.textContent="文化譜を自動で読み込めませんでした。プレーヤー側の仕様変更を確認してください。";
+   }
+ });
+})();
+</script>
+</body>
+</html>

@@ -9,10 +9,22 @@ let pages=[],current=0,naturalW=1180,currentH=760;
 function fit(){const maxW=Math.min(innerWidth-24,1220),maxH=Math.max(420,innerHeight-94),scale=Math.min(1,maxW/naturalW,maxH/currentH);frame.style.width=naturalW+"px";frame.style.height=currentH+"px";frame.style.transform=`scale(${scale})`;shell.style.width=naturalW*scale+"px";shell.style.height=currentH*scale+"px"}
 function show(i){current=Math.max(0,Math.min(pages.length-1,i));const p=pages[current];currentH=p.height;fit();frame.contentWindow.scrollTo(0,p.top);document.getElementById("count").textContent=`${current+1} / ${pages.length} ページ`;document.getElementById("prev").disabled=current===0;document.getElementById("next").disabled=current===pages.length-1;document.getElementById("pager").hidden=pages.length<=1;scrollTo({top:0,behavior:"instant"})}
 frame.addEventListener("load",async()=>{try{const w=frame.contentWindow,d=frame.contentDocument;if(!w||!d)throw 0;w.localStorage.setItem("shian-bunkafu-editor-v2",JSON.stringify(score));w.dispatchEvent(new w.Event("pageshow"));if(d.fonts)try{await d.fonts.ready}catch{}await new Promise(r=>setTimeout(r,220));
-const st=d.createElement("style");st.textContent=`html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:hidden!important}body>main.app{display:block!important;max-width:none!important;margin:0!important;padding:0!important}.head,.score-toolbar,.panel,.layer-panel,.editor-switcher,.note-color-panel,.bottom,.floating-history-controls,dialog{display:none!important}.workspace-shell,.score-viewport{display:block!important;width:auto!important;max-width:none!important;margin:0!important;padding:0!important;overflow:visible!important}.score-viewport>.paper{margin:0!important;box-shadow:none!important;border:0!important}`;d.head.appendChild(st);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-const paper=d.querySelector(".paper"),area=d.querySelector("#scoreArea"),staffs=[...area.querySelectorAll(".staff")];if(!paper||!staffs.length)throw 0;const pr=paper.getBoundingClientRect();naturalW=Math.ceil(Math.max(paper.scrollWidth,pr.width))+2;
+// v1.8: Do not override the culture-score app's layout containers.
+     // Hide only controls that are outside the score paper; preserve every width,
+     // margin, scale and positioning rule used by the app itself.
+     const hideSelectors=[".head",".score-toolbar",".panel",".layer-panel",".editor-switcher",".note-color-panel",".bottom",".floating-history-controls","dialog"];
+     hideSelectors.forEach(sel=>d.querySelectorAll(sel).forEach(el=>el.style.setProperty("visibility","hidden","important")));
+     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+     const paper=d.querySelector(".paper"),area=d.querySelector("#scoreArea"),staffs=[...area.querySelectorAll(".staff")];
+     if(!paper||!staffs.length)throw 0;
+     const pr=paper.getBoundingClientRect();
+
+     // Preserve the original PC layout width. The outer scorebook viewer alone scales it.
+     const bodyW=Math.max(d.documentElement.scrollWidth,d.body.scrollWidth);
+     naturalW=Math.ceil(Math.max(bodyW,pr.right))+2;
 const rows=Math.max(1,Number(score.rows)||staffs.length);let plan=[];if(score.printMode==="manual"){const a=String(score.manualPageRows||"").replace(/[、，]/g,",").split(",").map(x=>Number(x.trim())).filter(Number.isInteger);if(a.length&&a.reduce((x,y)=>x+y,0)===rows)plan=a}if(!plan.length){const max=score.lyricsMode?7:10,n=Math.max(1,Math.ceil(rows/max)),b=Math.floor(rows/n),e=rows%n;plan=Array.from({length:n},(_,i)=>b+(i<e?1:0))}
-let ri=0;pages=plan.map((count,pi)=>{const first=staffs[ri],last=staffs[Math.min(staffs.length-1,ri+count-1)],fr=first.getBoundingClientRect(),lr=last.getBoundingClientRect();let top=pi===0?pr.top:Math.max(pr.top,fr.top-24),bottom=pi===plan.length-1?Math.max(pr.bottom,lr.bottom+24):lr.bottom+24;ri+=count;return{top:Math.max(0,Math.floor(top)),height:Math.max(220,Math.ceil(bottom-top))}});show(0);loading.remove();sessionStorage.removeItem(KEY)}catch(e){console.error(e);loading.textContent="文化譜の正規表示を準備できませんでした。"}});
+let ri=0;pages=plan.map((count,pi)=>{const first=staffs[ri],last=staffs[Math.min(staffs.length-1,ri+count-1)],fr=first.getBoundingClientRect(),lr=last.getBoundingClientRect();let top=pi===0?0:Math.max(0,fr.top-24),bottom=pi===plan.length-1?Math.max(d.documentElement.scrollHeight,d.body.scrollHeight,lr.bottom+24):lr.bottom+24;ri+=count;return{top:Math.max(0,Math.floor(top)),height:Math.max(220,Math.ceil(bottom-top))}});show(0);loading.remove();sessionStorage.removeItem(KEY)}catch(e){console.error(e);loading.textContent="文化譜の正規表示を準備できませんでした。"}});
 document.getElementById("prev").onclick=()=>show(current-1);document.getElementById("next").onclick=()=>show(current+1);addEventListener("resize",fit,{passive:true});
 try{const target=new URL(URL,location.href);if(target.origin!==location.origin)throw new Error("公開元が異なります");frame.src=target.href}catch(e){console.error(e);loading.textContent="文化譜作成アプリを読み込めませんでした。"}
 })();

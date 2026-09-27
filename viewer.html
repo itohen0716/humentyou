@@ -1,109 +1,19 @@
-<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜を見る｜文化譜面帳</title>
-<style>
-*{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:#e6dfd5;color:#332c25;font-family:"Yu Gothic",sans-serif}
-.viewer-head{position:sticky;top:0;z-index:100;height:58px;background:#fffaf3;border-bottom:1px solid #d8cbbd;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;padding:0 max(14px,calc((100vw - 1180px)/2))}
-.viewer-title{font-family:"Yu Mincho",serif;font-size:19px;font-weight:500;white-space:nowrap}
-.pager{display:flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap}
-.pager button,.back{border:1px solid #abc2ca;border-radius:9px;background:#f7fbfc;color:#315f70;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap}
-.pager button:disabled{opacity:.35;cursor:default}.count{min-width:82px;text-align:center;font-size:13px}.back{justify-self:end}
-.stage{padding:18px 12px 34px;display:flex;justify-content:center;align-items:flex-start;overflow:auto}
-.paper-shell{position:relative;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.16);overflow:hidden}
-#pageFrame{position:absolute;left:0;top:0;border:0;background:#fff;transform-origin:top left}
-.loading{position:fixed;inset:58px 0 0;z-index:90;display:grid;place-items:center;background:#e6dfd5;color:#6e6156}
-@media(max-width:760px){.viewer-head{height:auto;min-height:58px;grid-template-columns:1fr auto;padding:7px 10px;gap:7px}.viewer-title{font-size:16px}.back{grid-column:2;grid-row:1}.pager{grid-column:1/3;grid-row:2;padding-bottom:2px}.pager button,.back{padding:7px 9px;font-size:12px}.loading{inset:96px 0 0}.stage{padding:10px 4px 24px}}
-</style>
-</head>
-<body>
-<header class="viewer-head">
- <div class="viewer-title">文化譜を見る</div>
- <div class="pager" id="pager" hidden><button id="prev">← 前のページ</button><span class="count" id="count"></span><button id="next">次のページ →</button></div>
- <button class="back" id="back">← 文化譜面帳へ戻る</button>
-</header>
-<main class="stage"><div class="paper-shell" id="shell"><iframe id="pageFrame" title="文化譜ページ"></iframe></div></main>
-<div class="loading" id="loading">文化譜の完成ページを準備しています…</div>
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>文化譜を見る｜文化譜面帳</title>
+<style>*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#e6dfd5;color:#332c25;font-family:"Yu Gothic",sans-serif}.viewer-head{position:sticky;top:0;z-index:100;height:58px;background:#fffaf3;border-bottom:1px solid #d8cbbd;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;padding:0 max(14px,calc((100vw - 1220px)/2))}.viewer-title{font-family:"Yu Mincho",serif;font-size:19px;white-space:nowrap}.pager{display:flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap}.pager button,.back{border:1px solid #abc2ca;border-radius:9px;background:#f7fbfc;color:#315f70;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap}.pager button:disabled{opacity:.35}.count{min-width:82px;text-align:center;font-size:13px}.back{justify-self:end}.stage{padding:18px 12px 34px;display:flex;justify-content:center;align-items:flex-start;overflow:auto}.paper-shell{position:relative;background:#fff;box-shadow:0 2px 12px #0002;overflow:hidden}#scoreFrame{position:absolute;left:0;top:0;border:0;background:#fff;transform-origin:top left}.loading{position:fixed;inset:58px 0 0;z-index:90;display:grid;place-items:center;background:#e6dfd5;color:#6e6156}@media(max-width:760px){.viewer-head{height:auto;grid-template-columns:1fr auto;padding:7px 10px}.back{grid-column:2}.pager{grid-column:1/3;grid-row:2}.loading{inset:96px 0 0}}</style></head>
+<body><header class="viewer-head"><div class="viewer-title">文化譜を見る</div><div class="pager" id="pager" hidden><button id="prev">← 前のページ</button><span class="count" id="count"></span><button id="next">次のページ →</button></div><button class="back" id="back">← 文化譜面帳へ戻る</button></header><main class="stage"><div class="paper-shell" id="shell"><iframe id="scoreFrame" title="文化譜"></iframe></div></main><div class="loading" id="loading">文化譜の正規表示を準備しています…</div>
 <script>
 (async()=>{
- const KEY="shian-scorebook-view-score",EDITOR_URL="https://itohen0716.github.io/sianhu/";
- const raw=sessionStorage.getItem(KEY),frame=document.getElementById("pageFrame"),shell=document.getElementById("shell"),loading=document.getElementById("loading");
- document.getElementById("back").onclick=()=>location.href="./index.html";
- if(!raw){loading.textContent="表示する文化譜が選択されていません。";return}
- let payload;try{payload=JSON.parse(raw)}catch{loading.textContent="文化譜データを読み込めませんでした。";return}
- const score=payload&&payload.score&&typeof payload.score==="object"?payload.score:payload;
- localStorage.setItem("shian-bunkafu-editor-v2",JSON.stringify(score));
-
- let current=0,pages=[],pageW=1123,pageH=794;
-
- function fit(){
-   const maxW=Math.min(window.innerWidth-24,1180),maxH=Math.max(420,window.innerHeight-94);
-   const scale=Math.min(1,maxW/pageW,maxH/pageH);
-   frame.style.width=pageW+"px";frame.style.height=pageH+"px";frame.style.transform=`scale(${scale})`;
-   shell.style.width=(pageW*scale)+"px";shell.style.height=(pageH*scale)+"px";
- }
- function show(i){
-   current=Math.max(0,Math.min(pages.length-1,i));
-   const d=frame.contentDocument;if(!d)return;
-   pages.forEach((p,n)=>p.style.setProperty("display",n===current?"block":"none","important"));
-   document.getElementById("count").textContent=`${current+1} / ${pages.length} ページ`;
-   document.getElementById("prev").disabled=current===0;document.getElementById("next").disabled=current===pages.length-1;
-   document.getElementById("pager").hidden=pages.length<=1;fit();window.scrollTo({top:0,behavior:"instant"});
- }
- frame.addEventListener("load",async()=>{
-   try{
-     const win=frame.contentWindow,d=frame.contentDocument;if(!win||!d)throw new Error();
-     win.localStorage.setItem("shian-bunkafu-editor-v2",JSON.stringify(score));
-     win.dispatchEvent(new win.Event("pageshow"));
-     if(d.fonts)try{await d.fonts.ready}catch{}
-     for(let i=0;i<100&&!win.ShianPrintV2;i++)await new Promise(r=>setTimeout(r,50));
-     const btn=d.getElementById("printPreview");if(!btn)throw new Error("印刷プレビュー機能なし");
-     btn.click();await new Promise(r=>setTimeout(r,120));
-     const dialog=d.getElementById("printDialog");if(dialog?.open)dialog.close();
-     win.dispatchEvent(new win.Event("beforeprint"));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-     const root=d.getElementById("printRootV2");pages=[...(root?.querySelectorAll(".pv2-page")||[])];
-     if(!pages.length)throw new Error("完成ページなし");
-
-     // Hide the editor, but leave the generated print tree untouched.
-     [...d.body.children].forEach(el=>{if(el!==root)el.style.setProperty("display","none","important")});
-     root.style.setProperty("display","block","important");
-     root.style.setProperty("position","static","important");
-     root.style.setProperty("margin","0","important");
-     root.style.setProperty("padding","0","important");
-     root.style.setProperty("background","#fff","important");
-
-     // Activate the app's own print-only rules in this iframe only.
-     for(const sheet of [...d.styleSheets]){
-       let rules;try{rules=[...sheet.cssRules]}catch{continue}
-       for(const rule of rules){
-         if(rule.type===win.CSSRule.MEDIA_RULE&&[...rule.media].some(m=>m==="print")){
-           const st=d.createElement("style");
-           st.textContent=[...rule.cssRules].map(r=>r.cssText).join("\n")
-             .replace(/body\s*>\s*main\.app\s*\{[^}]*\}/g,"")
-             .replace(/body\s*>\s*\.print-root-v2\s*\{[^}]*\}/g,"");
-           d.head.appendChild(st);
-         }
-       }
-     }
-
-     // Measure the completed page exactly as generated; no repositioning of comments/lyrics.
-     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
-     pages.forEach(p=>p.style.setProperty("display","block","important"));
-     const first=pages[0],rect=first.getBoundingClientRect();
-     pageW=Math.ceil(Math.max(rect.width,first.scrollWidth,first.offsetWidth));
-     pageH=Math.ceil(Math.max(rect.height,first.scrollHeight,first.offsetHeight));
-     d.documentElement.style.margin="0";d.body.style.margin="0";d.body.style.padding="0";d.body.style.overflow="hidden";
-     show(0);loading.remove();sessionStorage.removeItem(KEY);
-   }catch(e){console.error(e);loading.textContent="文化譜の完成ページを表示できませんでした。";}
- });
- document.getElementById("prev").onclick=()=>show(current-1);document.getElementById("next").onclick=()=>show(current+1);
- window.addEventListener("resize",fit,{passive:true});
- try{
-   const res=await fetch(EDITOR_URL,{cache:"no-store"});if(!res.ok)throw new Error();
-   let html=await res.text();html=html.replace(/<head([^>]*)>/i,'<head$1><base href="'+EDITOR_URL+'">');frame.srcdoc=html;
- }catch(e){console.error(e);loading.textContent="文化譜作成アプリを読み込めませんでした。";}
+const KEY="shian-scorebook-view-score",URL="https://itohen0716.github.io/sianhu/",raw=sessionStorage.getItem(KEY),frame=document.getElementById("scoreFrame"),shell=document.getElementById("shell"),loading=document.getElementById("loading");document.getElementById("back").onclick=()=>location.href="./index.html";
+if(!raw){loading.textContent="表示する文化譜が選択されていません。";return}let payload;try{payload=JSON.parse(raw)}catch{loading.textContent="文化譜データを読み込めませんでした。";return}const score=payload&&payload.score&&typeof payload.score==="object"?payload.score:payload;localStorage.setItem("shian-bunkafu-editor-v2",JSON.stringify(score));
+let pages=[],current=0,naturalW=1180,currentH=760;
+function fit(){const maxW=Math.min(innerWidth-24,1220),maxH=Math.max(420,innerHeight-94),scale=Math.min(1,maxW/naturalW,maxH/currentH);frame.style.width=naturalW+"px";frame.style.height=currentH+"px";frame.style.transform=`scale(${scale})`;shell.style.width=naturalW*scale+"px";shell.style.height=currentH*scale+"px"}
+function show(i){current=Math.max(0,Math.min(pages.length-1,i));const p=pages[current];currentH=p.height;fit();frame.contentWindow.scrollTo(0,p.top);document.getElementById("count").textContent=`${current+1} / ${pages.length} ページ`;document.getElementById("prev").disabled=current===0;document.getElementById("next").disabled=current===pages.length-1;document.getElementById("pager").hidden=pages.length<=1;scrollTo({top:0,behavior:"instant"})}
+frame.addEventListener("load",async()=>{try{const w=frame.contentWindow,d=frame.contentDocument;if(!w||!d)throw 0;w.localStorage.setItem("shian-bunkafu-editor-v2",JSON.stringify(score));w.dispatchEvent(new w.Event("pageshow"));if(d.fonts)try{await d.fonts.ready}catch{}await new Promise(r=>setTimeout(r,220));
+const st=d.createElement("style");st.textContent=`html,body{margin:0!important;padding:0!important;background:#fff!important;overflow:hidden!important}body>main.app{display:block!important;max-width:none!important;margin:0!important;padding:0!important}.head,.score-toolbar,.panel,.layer-panel,.editor-switcher,.note-color-panel,.bottom,.floating-history-controls,dialog{display:none!important}.workspace-shell,.score-viewport{display:block!important;width:auto!important;max-width:none!important;margin:0!important;padding:0!important;overflow:visible!important}.score-viewport>.paper{margin:0!important;box-shadow:none!important;border:0!important}`;d.head.appendChild(st);await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+const paper=d.querySelector(".paper"),area=d.querySelector("#scoreArea"),staffs=[...area.querySelectorAll(".staff")];if(!paper||!staffs.length)throw 0;const pr=paper.getBoundingClientRect();naturalW=Math.ceil(Math.max(paper.scrollWidth,pr.width))+2;
+const rows=Math.max(1,Number(score.rows)||staffs.length);let plan=[];if(score.printMode==="manual"){const a=String(score.manualPageRows||"").replace(/[、，]/g,",").split(",").map(x=>Number(x.trim())).filter(Number.isInteger);if(a.length&&a.reduce((x,y)=>x+y,0)===rows)plan=a}if(!plan.length){const max=score.lyricsMode?7:10,n=Math.max(1,Math.ceil(rows/max)),b=Math.floor(rows/n),e=rows%n;plan=Array.from({length:n},(_,i)=>b+(i<e?1:0))}
+let ri=0;pages=plan.map((count,pi)=>{const first=staffs[ri],last=staffs[Math.min(staffs.length-1,ri+count-1)],fr=first.getBoundingClientRect(),lr=last.getBoundingClientRect();let top=pi===0?pr.top:Math.max(pr.top,fr.top-24),bottom=pi===plan.length-1?Math.max(pr.bottom,lr.bottom+24):lr.bottom+24;ri+=count;return{top:Math.max(0,Math.floor(top)),height:Math.max(220,Math.ceil(bottom-top))}});show(0);loading.remove();sessionStorage.removeItem(KEY)}catch(e){console.error(e);loading.textContent="文化譜の正規表示を準備できませんでした。"}});
+document.getElementById("prev").onclick=()=>show(current-1);document.getElementById("next").onclick=()=>show(current+1);addEventListener("resize",fit,{passive:true});
+try{const r=await fetch(URL,{cache:"no-store"});if(!r.ok)throw 0;let html=await r.text();html=html.replace(/<head([^>]*)>/i,'<head$1><base href="'+URL+'">');frame.srcdoc=html}catch(e){loading.textContent="文化譜作成アプリを読み込めませんでした。"}
 })();
-</script>
-</body></html>
+</script></body></html>

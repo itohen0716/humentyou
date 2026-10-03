@@ -1,1 +1,143 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>文化譜を見る｜文化譜面帳</title><style>html,body{margin:0;height:100%;display:grid;place-items:center;background:#e6dfd5;color:#6e6156;font-family:"Yu Gothic",sans-serif}</style></head><body><div id="msg">文化譜を開いています…</div><script>(()=>{const K="shian-scorebook-view-score",r=sessionStorage.getItem(K);if(!r){msg.textContent="表示する文化譜が選択されていません。";return}try{JSON.parse(r)}catch{msg.textContent="文化譜データを読み込めませんでした。";return}location.replace("https://itohen0716.github.io/sianhu/?scorebook-view=1")})();</script></body></html>
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>文化譜を見る｜文化譜面帳</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:#e7dfd4;color:#332c25;font-family:"Yu Gothic",sans-serif}
+header{position:sticky;top:0;z-index:20;height:58px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:0 18px;background:#fffaf3;border-bottom:1px solid #d8cbbd}
+h1{margin:0;font:19px "Yu Mincho",serif}
+.pager{display:flex;align-items:center;gap:10px}
+button{border:1px solid #abc2ca;border-radius:9px;background:#f7fbfc;color:#315f70;font-weight:700;padding:8px 12px;cursor:pointer}
+button:disabled{opacity:.35;cursor:default}
+#back{justify-self:end}
+main{padding:18px 12px 30px;display:flex;justify-content:center}
+#clip{position:relative;overflow:hidden;background:#fff;box-shadow:0 2px 12px #0002}
+#app{position:absolute;border:0;transform-origin:0 0;background:#fff}
+#status{position:fixed;inset:58px 0 0;display:grid;place-items:center;background:#e7dfd4;color:#765f52;z-index:10}
+@media(max-width:700px){
+ header{height:auto;min-height:58px;grid-template-columns:1fr auto;padding:7px 10px}
+ .pager{grid-column:1/3;grid-row:2;justify-self:center;padding-bottom:3px}
+ #status{inset:96px 0 0}
+}
+</style>
+</head>
+<body>
+<header>
+<h1>文化譜を見る</h1>
+<div class="pager" id="pager" hidden><button id="prev">← 前のページ</button><span id="count"></span><button id="next">次のページ →</button></div>
+<button id="back">← 文化譜面帳へ戻る</button>
+</header>
+<main><div id="clip"><iframe id="app" src="about:blank" title="文化譜"></iframe></div></main>
+<div id="status">文化譜を準備しています…</div>
+<script>
+(async()=>{
+const VIEW_KEY="shian-scorebook-view-score";
+const EDIT_KEY="shian-bunkafu-editor-v2";
+const APP_URL="https://itohen0716.github.io/sianhu/";
+const raw=sessionStorage.getItem(VIEW_KEY);
+const status=document.getElementById("status"),frame=document.getElementById("app"),clip=document.getElementById("clip");
+document.getElementById("back").onclick=()=>location.replace("./index.html");
+if(!raw){status.textContent="表示する文化譜が選択されていません。";return}
+let payload,score;
+try{payload=JSON.parse(raw);score=payload&&payload.score&&typeof payload.score==="object"?payload.score:payload;if(!score||typeof score!=="object")throw 0}
+catch{status.textContent="文化譜データを読み込めませんでした。";return}
+
+/* 原因対策:
+   文化譜アプリは起動時に localStorage(EDIT_KEY) から譜面を読む。
+   一時的に選択譜面を置いて本物のアプリ自身に描画させる。
+   描画後は元データを復元し、iframe側の保存も遮断する。 */
+const previous=localStorage.getItem(EDIT_KEY);
+try{localStorage.setItem(EDIT_KEY,JSON.stringify(score))}catch(e){status.textContent="文化譜データを一時保存できませんでした。";return}
+
+let pages=[],current=0,metrics=null;
+function restoreEditorStorage(){
+ try{if(previous===null)localStorage.removeItem(EDIT_KEY);else localStorage.setItem(EDIT_KEY,previous)}catch{}
+}
+function layoutPage(index){
+ if(!metrics||!pages.length)return;
+ current=Math.max(0,Math.min(index,pages.length-1));
+ const pg=pages[current];
+ const availableW=Math.max(300,innerWidth-24);
+ const availableH=Math.max(320,innerHeight-94);
+ const scale=Math.min(1,availableW/metrics.paperW,availableH/pg.height);
+ const viewW=metrics.paperW*scale,viewH=pg.height*scale;
+ clip.style.width=viewW+"px";clip.style.height=viewH+"px";
+ frame.style.width=metrics.docW+"px";frame.style.height=metrics.docH+"px";
+ frame.style.left=(-metrics.paperLeft*scale)+"px";
+ frame.style.top=(-(metrics.paperTop+pg.top)*scale)+"px";
+ frame.style.transform=`scale(${scale})`;
+ document.getElementById("count").textContent=`${current+1} / ${pages.length} ページ`;
+ document.getElementById("prev").disabled=current===0;
+ document.getElementById("next").disabled=current===pages.length-1;
+ document.getElementById("pager").hidden=pages.length<=1;
+}
+document.getElementById("prev").onclick=()=>layoutPage(current-1);
+document.getElementById("next").onclick=()=>layoutPage(current+1);
+addEventListener("resize",()=>layoutPage(current),{passive:true});
+
+frame.addEventListener("load",async()=>{
+ try{
+   const w=frame.contentWindow,d=frame.contentDocument;
+   if(!w||!d)throw new Error("文化譜アプリへアクセスできません");
+   if(d.fonts)try{await d.fonts.ready}catch{}
+   await new Promise(r=>setTimeout(r,300));
+   await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+
+   const paper=d.querySelector(".paper"),area=d.querySelector("#scoreArea");
+   if(!paper||!area)throw new Error("譜面領域が見つかりません");
+   const staffs=[...area.querySelectorAll(".staff")];
+   if(!staffs.length)throw new Error("譜面の段が生成されていません");
+
+   /* 閲覧中に文化譜アプリのpagehide/saveが本来の編集データを上書きしないよう遮断 */
+   try{
+     const storageProto=w.Storage.prototype,originalSet=storageProto.setItem;
+     storageProto.setItem=function(k,v){if(this===w.localStorage&&k===EDIT_KEY)return;return originalSet.call(this,k,v)};
+   }catch(e){console.warn(e)}
+   restoreEditorStorage();
+
+   /* 内部CSS・幅・歌詞・唄・コメント座標は一切変更しない。
+      完成済みの紙面をiframeごと外側から切り抜く。 */
+   const pr=paper.getBoundingClientRect();
+   const docW=Math.max(d.documentElement.scrollWidth,d.body.scrollWidth,Math.ceil(pr.right));
+   const docH=Math.max(d.documentElement.scrollHeight,d.body.scrollHeight,Math.ceil(pr.bottom));
+   metrics={paperLeft:pr.left,paperTop:pr.top,paperW:pr.width,docW,docH};
+
+   const rowCount=Math.max(1,Number(score.rows)||staffs.length);
+   let plan=[];
+   if(score.printMode==="manual"){
+     const vals=String(score.manualPageRows||"").replace(/[、，]/g,",").split(",").map(x=>Number(x.trim())).filter(Number.isInteger);
+     if(vals.length&&vals.reduce((a,b)=>a+b,0)===rowCount)plan=vals;
+   }
+   if(!plan.length){
+     const hasSong=score.lyricsVisible!==false||score.vocalVisible!==false;
+     const maxRows=hasSong?7:10,pc=Math.max(1,Math.ceil(rowCount/maxRows)),b=Math.floor(rowCount/pc),e=rowCount%pc;
+     plan=Array.from({length:pc},(_,i)=>b+(i<e?1:0));
+   }
+
+   let ri=0;
+   pages=plan.map((n,pi)=>{
+     const first=staffs[Math.min(ri,staffs.length-1)],last=staffs[Math.min(ri+n-1,staffs.length-1)];
+     const fr=first.getBoundingClientRect(),lr=last.getBoundingClientRect();
+     const top=pi===0?0:Math.max(0,fr.top-pr.top-20);
+     const bottom=pi===plan.length-1?pr.height:Math.min(pr.height,lr.bottom-pr.top+26);
+     ri+=n;
+     return{top,height:Math.max(220,bottom-top)};
+   });
+
+   layoutPage(0);
+   status.remove();
+   sessionStorage.removeItem(VIEW_KEY);
+ }catch(e){
+   console.error(e);
+   restoreEditorStorage();
+   status.textContent="文化譜を表示できませんでした。";
+ }
+});
+frame.src=APP_URL;
+})();
+</script>
+</body>
+</html>

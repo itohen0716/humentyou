@@ -6,21 +6,80 @@
 <title>文化譜を見る｜文化譜面帳</title>
 <style>
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:#e7dfd4;color:#332c25;font-family:"Yu Gothic",sans-serif}
-header{position:sticky;top:0;z-index:30;height:58px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:0 18px;background:#fffaf3;border-bottom:1px solid #d8cbbd}
+html,body{
+  margin:0;
+  min-height:100%;
+  background:#e7dfd4;
+  color:#332c25;
+  font-family:"Yu Gothic",sans-serif
+}
+header{
+  position:sticky;
+  top:0;
+  z-index:30;
+  min-height:58px;
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:12px;
+  padding:8px 18px;
+  background:#fffaf3;
+  border-bottom:1px solid #d8cbbd
+}
 h1{margin:0;font:19px "Yu Mincho",serif}
 .pager{display:flex;align-items:center;gap:10px}
-button{border:1px solid #abc2ca;border-radius:9px;background:#f7fbfc;color:#315f70;font-weight:700;padding:8px 12px;cursor:pointer}
+button{
+  border:1px solid #abc2ca;
+  border-radius:9px;
+  background:#f7fbfc;
+  color:#315f70;
+  font-weight:700;
+  padding:8px 12px;
+  cursor:pointer
+}
 button:disabled{opacity:.35;cursor:default}
 #back{justify-self:end}
-main{padding:20px 12px 34px;display:flex;justify-content:center;align-items:flex-start}
-#shell{position:relative;overflow:hidden;background:#fff;box-shadow:0 3px 15px #0002}
-#frame{position:absolute;left:0;top:0;width:1200px;height:6000px;border:0;background:#fff;transform-origin:0 0}
-#loading{position:fixed;inset:58px 0 0;z-index:25;display:grid;place-items:center;background:#e7dfd4;color:#765f52}
+main{
+  padding:18px 12px 40px;
+  display:flex;
+  justify-content:center;
+  align-items:flex-start
+}
+#paperStage{
+  position:relative;
+  overflow:hidden;
+  background:#fff;
+  box-shadow:0 3px 16px rgba(0,0,0,.16)
+}
+#sourceFrame{
+  position:absolute;
+  left:0;
+  top:0;
+  border:0;
+  background:#fff;
+  transform-origin:0 0
+}
+#loading{
+  position:fixed;
+  inset:58px 0 0;
+  z-index:25;
+  display:grid;
+  place-items:center;
+  background:#e7dfd4;
+  color:#765f52
+}
 @media(max-width:700px){
- header{height:auto;min-height:58px;grid-template-columns:1fr auto;padding:7px 10px}
- .pager{grid-column:1/3;grid-row:2;justify-self:center;padding-bottom:3px}
- #loading{inset:96px 0 0}
+  header{
+    grid-template-columns:1fr auto;
+    gap:7px;
+    padding:7px 10px
+  }
+  .pager{
+    grid-column:1/3;
+    grid-row:2;
+    justify-self:center
+  }
+  #loading{inset:96px 0 0}
 }
 </style>
 </head>
@@ -34,23 +93,36 @@ main{padding:20px 12px 34px;display:flex;justify-content:center;align-items:flex
   </div>
   <button id="back">← 文化譜面帳へ戻る</button>
 </header>
-<main><div id="shell"><iframe id="frame" title="文化譜 印刷ページ"></iframe></div></main>
+
+<main>
+  <div id="paperStage">
+    <iframe id="sourceFrame" title="文化譜 印刷ページ"></iframe>
+  </div>
+</main>
+
 <div id="loading">印刷用の文化譜を準備しています…</div>
 
 <script>
 (async()=>{
 "use strict";
 
+/*
+  v3.0
+  文化譜作成アプリの「正常な通常画面 → 正常な印刷DOM生成」を、そのまま再現する。
+  閲覧側では歌詞・コメント・譜面部品の座標を一切再計算しない。
+*/
+
 const VIEW_KEY="shian-scorebook-view-score";
 const EDIT_KEY="shian-bunkafu-editor-v2";
 const APP_URL="https://itohen0716.github.io/sianhu/";
-const DESKTOP_WIDTH=1200;
-const MAX_SCALE=1.22;
-const SAFE_MARGIN_X=28;
-const SAFE_MARGIN_Y=22;
+
+const PAGE_SIDE_MARGIN=24;
+const PAGE_TOP_BOTTOM_MARGIN=18;
+const MAX_VIEW_SCALE=1.12;
+
 const raw=sessionStorage.getItem(VIEW_KEY);
-const frame=document.getElementById("frame");
-const shell=document.getElementById("shell");
+const frame=document.getElementById("sourceFrame");
+const stage=document.getElementById("paperStage");
 const loading=document.getElementById("loading");
 
 document.getElementById("back").onclick=()=>location.replace("./index.html");
@@ -70,8 +142,8 @@ try{
   return;
 }
 
-/* 文化譜アプリ自身へ、一時的に選択譜面を渡す */
-const previous=localStorage.getItem(EDIT_KEY);
+/* 選択譜面を、文化譜アプリ本来の読込キーへ一時的に置く */
+const previousEditorData=localStorage.getItem(EDIT_KEY);
 try{
   localStorage.setItem(EDIT_KEY,JSON.stringify(score));
 }catch(error){
@@ -79,86 +151,153 @@ try{
   return;
 }
 
-const restoreEditorStorage=()=>{
+const restoreEditorData=()=>{
   try{
-    if(previous===null)localStorage.removeItem(EDIT_KEY);
-    else localStorage.setItem(EDIT_KEY,previous);
+    if(previousEditorData===null)localStorage.removeItem(EDIT_KEY);
+    else localStorage.setItem(EDIT_KEY,previousEditorData);
   }catch(error){}
 };
 
+let currentPage=0;
 let pages=[];
-let current=0;
-let geometry=null;
+let documentSize={width:0,height:0};
 
-function getHeaderHeight(){
-  const header=document.querySelector("header");
-  return header?Math.ceil(header.getBoundingClientRect().height):58;
+function waitFrames(count=2){
+  return new Promise(resolve=>{
+    const step=()=>{
+      if(--count<=0)resolve();
+      else requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
 }
 
-function measurePageBounds(page,w){
-  const visibleRect=(el)=>{
-    if(!el)return null;
-    const st=w.getComputedStyle(el);
-    if(st.display==="none"||st.visibility==="hidden")return null;
-    const rect=el.getBoundingClientRect();
-    if(!(rect.width>0||rect.height>0))return null;
-    return rect;
-  };
-
-  const pageRect=page.getBoundingClientRect();
-  let left=pageRect.left;
-  let right=pageRect.right;
-  let top=pageRect.top;
-  let bottom=pageRect.bottom;
-
-  for(const el of page.querySelectorAll("*")){
-    const rect=visibleRect(el);
-    if(!rect)continue;
-    left=Math.min(left,rect.left);
-    right=Math.max(right,rect.right);
-    top=Math.min(top,rect.top);
-    bottom=Math.max(bottom,rect.bottom);
+async function waitForStableNormalLayout(w,d){
+  if(d.fonts){
+    try{
+      await d.fonts.load('16px "Shian 851 MkPOP"');
+      await d.fonts.ready;
+    }catch(error){}
   }
 
-  return {
+  const paper=d.querySelector(".paper");
+  const scoreArea=d.querySelector("#scoreArea");
+  if(!paper||!scoreArea)throw new Error("通常譜面が見つかりません");
+
+  let previous="";
+  let stableCount=0;
+
+  for(let i=0;i<90;i++){
+    await waitFrames(1);
+
+    const paperRect=paper.getBoundingClientRect();
+    const scoreRect=scoreArea.getBoundingClientRect();
+    const staffCount=scoreArea.querySelectorAll(".staff").length;
+    const annotationCount=d.querySelectorAll("#annotations [data-item],#annotations .annotation-item").length;
+
+    const signature=[
+      Math.round(paperRect.width*100)/100,
+      Math.round(paperRect.height*100)/100,
+      Math.round(scoreRect.width*100)/100,
+      Math.round(scoreRect.height*100)/100,
+      staffCount,
+      annotationCount
+    ].join("|");
+
+    if(signature===previous)stableCount++;
+    else stableCount=0;
+
+    previous=signature;
+    if(stableCount>=5)return;
+  }
+}
+
+function collectExactPrintCss(w,d){
+  let css="";
+  for(const sheet of [...d.styleSheets]){
+    let rules;
+    try{rules=[...sheet.cssRules]}catch(error){continue}
+
+    for(const rule of rules){
+      if(
+        rule.type===w.CSSRule.MEDIA_RULE &&
+        String(rule.conditionText||"").toLowerCase().includes("print")
+      ){
+        for(const child of [...rule.cssRules]){
+          css+=child.cssText+"\n";
+        }
+      }
+    }
+  }
+  return css;
+}
+
+function measurePrintedPage(page){
+  const rect=page.getBoundingClientRect();
+  let left=rect.left;
+  let right=rect.right;
+  let top=rect.top;
+  let bottom=rect.bottom;
+
+  /*
+    SVGコメントや端の部品を含めた実描画域も確認する。
+    ただし印刷ページ本体より小さくはしない。
+  */
+  for(const element of page.querySelectorAll("*")){
+    const r=element.getBoundingClientRect();
+    if(!(r.width>0||r.height>0))continue;
+    left=Math.min(left,r.left);
+    right=Math.max(right,r.right);
+    top=Math.min(top,r.top);
+    bottom=Math.max(bottom,r.bottom);
+  }
+
+  return{
     left,
     top,
+    width:Math.max(rect.width,right-left),
+    height:Math.max(rect.height,bottom-top),
     right,
-    bottom,
-    width:Math.max(pageRect.width,right-left),
-    height:Math.max(pageRect.height,bottom-top)
+    bottom
   };
 }
 
 function showPage(index){
-  if(!geometry||!pages.length)return;
-  current=Math.max(0,Math.min(index,pages.length-1));
-  const pg=pages[current];
+  if(!pages.length)return;
 
-  const availableWidth=Math.max(280,window.innerWidth-24);
-  const availableHeight=Math.max(320,window.innerHeight-getHeaderHeight()-24);
-  const targetWidth=pg.width+SAFE_MARGIN_X*2;
-  const targetHeight=pg.height+SAFE_MARGIN_Y*2;
-  const scale=Math.min(MAX_SCALE,availableWidth/targetWidth,availableHeight/targetHeight);
+  currentPage=Math.max(0,Math.min(index,pages.length-1));
+  const page=pages[currentPage];
 
-  shell.style.width=(targetWidth*scale)+"px";
-  shell.style.height=(targetHeight*scale)+"px";
+  /*
+    高さでは縮小しない。
+    「印刷物を大きめに見る」を優先し、縦方向はブラウザでスクロールする。
+    これにより2ページ目下端をviewer側で切らない。
+  */
+  const availableWidth=Math.max(300,window.innerWidth-24);
+  const fullWidth=page.width+PAGE_SIDE_MARGIN*2;
+  const scale=Math.min(MAX_VIEW_SCALE,availableWidth/fullWidth);
 
-  frame.style.width=geometry.documentWidth+"px";
-  frame.style.height=geometry.documentHeight+"px";
-  frame.style.left=((SAFE_MARGIN_X-pg.left)*scale)+"px";
-  frame.style.top=((SAFE_MARGIN_Y-pg.top)*scale)+"px";
+  stage.style.width=(fullWidth*scale)+"px";
+  stage.style.height=((page.height+PAGE_TOP_BOTTOM_MARGIN*2)*scale)+"px";
+
+  frame.style.width=documentSize.width+"px";
+  frame.style.height=documentSize.height+"px";
+  frame.style.left=((PAGE_SIDE_MARGIN-page.left)*scale)+"px";
+  frame.style.top=((PAGE_TOP_BOTTOM_MARGIN-page.top)*scale)+"px";
   frame.style.transform=`scale(${scale})`;
 
-  document.getElementById("count").textContent=`${current+1} / ${pages.length} ページ`;
-  document.getElementById("prev").disabled=current===0;
-  document.getElementById("next").disabled=current===pages.length-1;
+  document.getElementById("count").textContent=
+    `${currentPage+1} / ${pages.length} ページ`;
+  document.getElementById("prev").disabled=currentPage===0;
+  document.getElementById("next").disabled=currentPage===pages.length-1;
   document.getElementById("pager").hidden=pages.length<=1;
+
+  window.scrollTo({top:0,behavior:"instant"});
 }
 
-document.getElementById("prev").onclick=()=>showPage(current-1);
-document.getElementById("next").onclick=()=>showPage(current+1);
-window.addEventListener("resize",()=>showPage(current),{passive:true});
+document.getElementById("prev").onclick=()=>showPage(currentPage-1);
+document.getElementById("next").onclick=()=>showPage(currentPage+1);
+window.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 
 frame.addEventListener("load",async()=>{
   try{
@@ -166,74 +305,100 @@ frame.addEventListener("load",async()=>{
     const d=frame.contentDocument;
     if(!w||!d)throw new Error("文化譜アプリへアクセスできません");
 
-    /* 重要:
-       print-v2.js は「現在の写譜画面の実寸」を読み取って印刷座標を作る。
-       そのため印刷生成前のiframeをPC幅のまま固定する。 */
-    frame.style.width=DESKTOP_WIDTH+"px";
-    frame.style.height="6000px";
+    /*
+      最重要点:
+      固定1200pxにはしない。
+      ユーザーが文化譜作成アプリを普通に開く時と同じ
+      「現在のブラウザ表示幅」で初回描画させる。
+      print-v2.js のコメント位置変換は、この通常画面の実座標を参照するため。
+    */
+    const normalViewportWidth=Math.max(900,window.innerWidth);
+    const normalViewportHeight=Math.max(700,window.innerHeight);
 
-    if(d.fonts){
-      try{
-        await d.fonts.load('16px "Shian 851 MkPOP"');
-        await d.fonts.ready;
-      }catch(error){}
-    }
+    frame.style.width=normalViewportWidth+"px";
+    frame.style.height=normalViewportHeight+"px";
 
-    await new Promise(resolve=>setTimeout(resolve,350));
-    w.dispatchEvent(new w.Event("resize"));
-    await new Promise(resolve=>setTimeout(resolve,220));
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    await waitForStableNormalLayout(w,d);
 
-    /* beforeprint は文化譜アプリ本来の applyPrintLayout() を呼び、
-       ShianPrintV2.render() で #printRootV2 を生成する。 */
+    /*
+      文化譜作成アプリ本来の beforeprint 経路を使う。
+      #printRootV2 が空なら ensurePrintLayout() → applyPrintLayout()
+      → ShianPrintV2.render() が実行される。
+    */
     w.dispatchEvent(new w.Event("beforeprint"));
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    await waitFrames(3);
 
-    const root=d.querySelector("#printRootV2");
-    let generated=root?[...root.querySelectorAll(".pv2-page")]:[];
-    if(!root||!generated.length)throw new Error("印刷ページが生成されませんでした");
+    const printRoot=d.querySelector("#printRootV2");
+    if(!printRoot)throw new Error("印刷ルートがありません");
 
-    /* v2.2の原因:
-       ".pv2-" の出現ごとに body.print-view を付けていたため、
-       ".pv2-page .pv2-title" が
-       "body.print-view .pv2-page body.print-view .pv2-title"
-       となり、子孫CSSの大半が無効になっていた。
+    let printedPages=[...printRoot.querySelectorAll(".pv2-page")];
+    if(!printedPages.length)throw new Error("印刷ページが生成されませんでした");
 
-       v2.3では実際の @media print 内CSSを一文字も書き換えず、
-       同じ文書の画面表示へそのまま展開する。 */
-    let exactPrintCss="";
-    for(const sheet of [...d.styleSheets]){
-      let rules;
-      try{rules=[...sheet.cssRules]}catch(error){continue}
-      for(const rule of rules){
-        if(rule.type===w.CSSRule.MEDIA_RULE &&
-           String(rule.conditionText||"").toLowerCase().includes("print")){
-          for(const child of [...rule.cssRules]){
-            exactPrintCss+=child.cssText+"\n";
-          }
-        }
-      }
-    }
-
+    /*
+      native印刷で使用される @media print の中身を、
+      セレクタを書き換えず、そのまま画面表示へ適用する。
+    */
+    const exactPrintCss=collectExactPrintCss(w,d);
     if(!exactPrintCss.trim())throw new Error("印刷CSSを取得できませんでした");
 
-    const style=d.createElement("style");
-    style.id="scorebook-exact-print-css";
-    style.textContent=exactPrintCss+`
-      html,body{margin:0!important;padding:0!important;background:#fff!important}
-      body{overflow:hidden!important}
-      body>main.app{display:none!important}
-      .print-root{display:none!important}
-      .shian-print-v2{display:block!important;margin:0!important;padding:0!important;background:#fff!important}
-      .pv2-page{display:block!important;margin:0!important}
+    const screenPrintStyle=d.createElement("style");
+    screenPrintStyle.id="scorebook-native-print-view";
+    screenPrintStyle.textContent=exactPrintCss+`
+      html,body{
+        margin:0!important;
+        padding:0!important;
+        background:#fff!important;
+      }
+      body{
+        overflow:visible!important;
+      }
+      body>main.app{
+        display:none!important;
+      }
+      .print-root{
+        display:none!important;
+      }
+      .shian-print-v2{
+        display:block!important;
+        margin:0!important;
+        padding:0!important;
+        background:#fff!important;
+      }
+      .pv2-page{
+        display:block!important;
+        margin:0!important;
+      }
     `;
-    d.head.appendChild(style);
+    d.head.appendChild(screenPrintStyle);
 
-    /* 表示切替後に実寸を再取得する */
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-    generated=[...root.querySelectorAll(".pv2-page")];
+    await waitFrames(3);
 
-    /* 閲覧iframeが閉じる時に文化譜アプリ本来の編集データを上書きしない */
+    printedPages=[...printRoot.querySelectorAll(".pv2-page")];
+    pages=printedPages.map(measurePrintedPage);
+
+    if(!pages.length||!pages[0].width||!pages[0].height){
+      throw new Error("印刷ページ寸法を取得できませんでした");
+    }
+
+    /*
+      ここから先は印刷DOMの位置を変更しない。
+      iframe全体を外側から移動・拡大縮小するだけ。
+    */
+    documentSize.width=Math.max(
+      d.documentElement.scrollWidth,
+      d.body.scrollWidth,
+      ...pages.map(page=>Math.ceil(page.right+PAGE_SIDE_MARGIN))
+    );
+    documentSize.height=Math.max(
+      d.documentElement.scrollHeight,
+      d.body.scrollHeight,
+      ...pages.map(page=>Math.ceil(page.bottom+PAGE_TOP_BOTTOM_MARGIN))
+    );
+
+    /*
+      viewerを閉じる時、文化譜作成アプリのpagehide/saveが
+      本来の編集データへ閲覧用譜面を書き戻さないよう遮断する。
+    */
     try{
       const proto=w.Storage.prototype;
       const originalSetItem=proto.setItem;
@@ -242,41 +407,26 @@ frame.addEventListener("load",async()=>{
         return originalSetItem.call(this,key,value);
       };
     }catch(error){}
-    restoreEditorStorage();
 
-    const measuredPages=generated.map(page=>measurePageBounds(page,w));
-    if(!measuredPages.length||!measuredPages[0].width||!measuredPages[0].height){
-      throw new Error("印刷ページ寸法を取得できませんでした");
-    }
-
-    const documentWidth=Math.max(
-      d.documentElement.scrollWidth,
-      d.body.scrollWidth,
-      ...measuredPages.map(p=>Math.ceil(p.right+SAFE_MARGIN_X))
-    );
-    const documentHeight=Math.max(
-      d.documentElement.scrollHeight,
-      d.body.scrollHeight,
-      ...measuredPages.map(p=>Math.ceil(p.bottom+SAFE_MARGIN_Y))
-    );
-
-    geometry={ documentWidth, documentHeight };
-    pages=measuredPages;
+    restoreEditorData();
+    sessionStorage.removeItem(VIEW_KEY);
 
     showPage(0);
     loading.remove();
-    sessionStorage.removeItem(VIEW_KEY);
 
   }catch(error){
     console.error(error);
-    restoreEditorStorage();
+    restoreEditorData();
     loading.textContent="印刷用の文化譜を表示できませんでした。";
   }
 });
 
-/* 読み込み開始前からPC幅を確保 */
-frame.style.width=DESKTOP_WIDTH+"px";
-frame.style.height="6000px";
+/*
+  読み込み開始時点から「現在のブラウザ幅」を与える。
+  display:none にはせず、実レイアウトを作らせる。
+*/
+frame.style.width=Math.max(900,window.innerWidth)+"px";
+frame.style.height=Math.max(700,window.innerHeight)+"px";
 frame.src=APP_URL;
 
 })();

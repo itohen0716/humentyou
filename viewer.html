@@ -269,16 +269,27 @@ function showPage(index){
   const page=pages[currentPage];
 
   /*
-    高さでは縮小しない。
-    「印刷物を大きめに見る」を優先し、縦方向はブラウザでスクロールする。
-    これにより2ページ目下端をviewer側で切らない。
+    v3.4:
+    デバイス／ウィンドウの実表示領域を取得し、
+    文化譜1ページ全体が必ず画面内へ収まる倍率を自動計算する。
+    横幅だけでなく高さも判定する。
   */
-  const availableWidth=Math.max(300,window.innerWidth-24);
+  const viewportWidth=window.visualViewport?.width||window.innerWidth;
+  const viewportHeight=window.visualViewport?.height||window.innerHeight;
+  const headerHeight=Math.ceil(document.querySelector("header")?.getBoundingClientRect().height||58);
+
+  const availableWidth=Math.max(280,viewportWidth-24);
+  const availableHeight=Math.max(280,viewportHeight-headerHeight-28);
+
   const fullWidth=page.width+PAGE_SIDE_MARGIN*2;
-  const scale=Math.min(MAX_VIEW_SCALE,availableWidth/fullWidth);
+  const fullHeight=page.height+PAGE_TOP_BOTTOM_MARGIN*2;
+
+  const widthScale=availableWidth/fullWidth;
+  const heightScale=availableHeight/fullHeight;
+  const scale=Math.min(MAX_VIEW_SCALE,widthScale,heightScale);
 
   stage.style.width=(fullWidth*scale)+"px";
-  stage.style.height=((page.height+PAGE_TOP_BOTTOM_MARGIN*2)*scale)+"px";
+  stage.style.height=(fullHeight*scale)+"px";
 
   frame.style.width=documentSize.width+"px";
   frame.style.height=documentSize.height+"px";
@@ -298,6 +309,7 @@ function showPage(index){
 document.getElementById("prev").onclick=()=>showPage(currentPage-1);
 document.getElementById("next").onclick=()=>showPage(currentPage+1);
 window.addEventListener("resize",()=>showPage(currentPage),{passive:true});
+window.visualViewport?.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 
 frame.addEventListener("load",async()=>{
   try{

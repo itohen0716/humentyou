@@ -78,35 +78,47 @@ async function initializePlayer(){
     style.id="scorebook-player-bridge-style";
     style.textContent=`
       .scorebook-return-header{
-        height:64px;
-        background:#fffaf3;
-        border-bottom:1px solid #d8cbbd;
+        position:sticky;
+        top:0;
+        z-index:10000;
+        min-height:66px;
+        width:100%;
+        margin:0;
+        padding:7px max(16px,calc((100% - 1160px)/2));
         display:flex;
         align-items:center;
         justify-content:space-between;
-        width:min(1160px,calc(100% - 28px));
-        max-width:calc(100% - 20px);
-        margin:0 auto;
-        padding:8px 14px;
-        gap:24px;
-        position:relative;
-        z-index:10000;
+        gap:20px;
+        background:#fffaf3;
+        border-bottom:1px solid #d8cbbd;
+        box-shadow:0 2px 8px rgba(73,49,32,.07);
         color:#332c26;
         font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",sans-serif;
         box-sizing:border-box
       }
       .scorebook-return-brand{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        min-width:0;
         font-family:"Yu Mincho",serif;
-        font-size:21px;
+        font-size:20px;
         font-weight:700;
         line-height:1.1
       }
+      .scorebook-return-logo{
+        width:48px;
+        height:48px;
+        object-fit:contain;
+        flex:0 0 auto
+      }
+      .scorebook-return-title{min-width:0}
       .scorebook-return-brand small{
         display:block;
-        font:9px sans-serif;
+        font:8px sans-serif;
         letter-spacing:.2em;
         color:#766a60;
-        margin-top:5px
+        margin-top:4px
       }
       .scorebook-return-button{
         border:1px solid #abc2ca;
@@ -125,12 +137,13 @@ async function initializePlayer(){
       }
       @media(max-width:600px){
         .scorebook-return-header{
-          height:58px;
-          width:calc(100% - 20px);
-          padding:7px 10px
+          min-height:58px;
+          width:100%;
+          padding:5px 10px
         }
-        .scorebook-return-brand{font-size:18px}
-        .scorebook-return-button{padding:8px 10px;font-size:13px}
+        .scorebook-return-logo{width:40px;height:40px}
+        .scorebook-return-brand{font-size:17px;gap:7px}
+        .scorebook-return-button{padding:8px 10px;font-size:12px}
       }
     `;
     doc.head.appendChild(style);
@@ -139,7 +152,10 @@ async function initializePlayer(){
       const header=doc.createElement("header");
       header.className="scorebook-return-header";
       header.innerHTML=
-        '<div class="scorebook-return-brand">文化譜面帳<small>SHIAN SCORE BOOK</small></div>'+
+        '<div class="scorebook-return-brand">'+
+          '<img class="scorebook-return-logo" src="https://itohen0716.github.io/humentyou/assets/shian.png" alt="">'+
+          '<div class="scorebook-return-title">文化譜面帳<small>SHIAN SCORE BOOK</small></div>'+
+        '</div>'+
         '<button type="button" class="scorebook-return-button">← 文化譜面帳へ戻る</button>';
       doc.body.prepend(header);
       header.querySelector("button").onclick=()=>location.replace("./index.html");

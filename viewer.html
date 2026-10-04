@@ -39,6 +39,42 @@ button{
 }
 button:disabled{opacity:.35;cursor:default}
 #back{justify-self:end}
+.viewer-actions{
+  justify-self:end;
+  display:grid;
+  grid-template-columns:auto auto;
+  gap:6px 8px;
+  align-items:center
+}
+.viewer-note{
+  grid-column:1 / 3;
+  margin:0;
+  color:#a9998e;
+  font-size:10px;
+  line-height:1.3;
+  text-align:right;
+  white-space:nowrap
+}
+#fullscreenBtn{
+  border-color:#9fb9c3;
+  background:#eef6f8;
+  color:#285f75
+}
+body.fullscreen-view{
+  background:#e7dfd4;
+  overflow:hidden
+}
+body.fullscreen-view header{
+  display:none!important
+}
+body.fullscreen-view main{
+  padding:0!important;
+  min-height:100vh;
+  align-items:center
+}
+body.fullscreen-view #paperStage{
+  box-shadow:none
+}
 main{
   padding:18px 12px 40px;
   display:flex;
@@ -195,6 +231,9 @@ main{
     justify-self:center
   }
   #loading{inset:96px 0 0}
+  .viewer-actions{gap:5px;grid-column:2;grid-row:1}
+  .viewer-note{display:none}
+  #fullscreenBtn,#back{padding:7px 8px;font-size:11px}
   .ink-popup{left:12px!important;right:12px!important;top:auto!important;bottom:12px!important;width:auto}
   .ink-active-bar{right:8px;bottom:8px}
   #inkState{left:8px;bottom:62px}
@@ -209,7 +248,11 @@ main{
     <span id="count"></span>
     <button id="next">次のページ →</button>
   </div>
-  <button id="back">← 文化譜面帳へ戻る</button>
+  <div class="viewer-actions">
+    <button id="fullscreenBtn" type="button">⛶ 全画面表示</button>
+    <button id="back" type="button">← 文化譜面帳へ戻る</button>
+    <p class="viewer-note">全画面表示中は画面タップで戻ります。書き込みは戻ってからできます。</p>
+  </div>
 </header>
 
 <main>
@@ -304,6 +347,54 @@ const inkActiveBar=document.getElementById("inkActiveBar");
 const inkState=document.getElementById("inkState");
 
 document.getElementById("back").onclick=()=>location.replace("./index.html");
+
+const fullscreenButton=document.getElementById("fullscreenBtn");
+
+function isFullscreenActive(){
+  return Boolean(document.fullscreenElement||document.webkitFullscreenElement);
+}
+
+async function enterFullscreen(){
+  /* 全画面中は「閲覧専用」。誤記入防止のため手書きモードを終了する。 */
+  if(typeof finishInkMode==="function")finishInkMode();
+
+  const target=document.documentElement;
+  try{
+    if(target.requestFullscreen){
+      await target.requestFullscreen();
+    }else if(target.webkitRequestFullscreen){
+      target.webkitRequestFullscreen();
+    }else{
+      alert("このブラウザでは全画面表示を利用できません。");
+    }
+  }catch(error){
+    console.error(error);
+    alert("全画面表示を開始できませんでした。");
+  }
+}
+
+async function exitFullscreenView(){
+  try{
+    if(document.exitFullscreen&&document.fullscreenElement){
+      await document.exitFullscreen();
+    }else if(document.webkitExitFullscreen&&document.webkitFullscreenElement){
+      document.webkitExitFullscreen();
+    }
+  }catch(error){
+    console.error(error);
+  }
+}
+
+function syncFullscreenView(){
+  const active=isFullscreenActive();
+  document.body.classList.toggle("fullscreen-view",active);
+  fullscreenButton.textContent=active?"全画面表示中":"⛶ 全画面表示";
+  requestAnimationFrame(()=>showPage(currentPage));
+}
+
+fullscreenButton.addEventListener("click",enterFullscreen);
+document.addEventListener("fullscreenchange",syncFullscreenView);
+document.addEventListener("webkitfullscreenchange",syncFullscreenView);
 
 if(!raw){
   loading.textContent="表示する文化譜が選択されていません。";
@@ -556,7 +647,7 @@ document.getElementById("inkUndo").onclick=()=>{
 };
 
 inkOverlay.addEventListener("dblclick",event=>{
-  if(inkActive)return;
+  if(isFullscreenActive()||inkActive)return;
   event.preventDefault();
   openInkPopup(event.clientX,event.clientY);
 });
@@ -641,7 +732,7 @@ inkOverlay.addEventListener("pointercancel",event=>{
 
 /* 指・ペンのダブルタップでも設定を開く（通常閲覧時のみ） */
 inkOverlay.addEventListener("pointerup",event=>{
-  if(inkActive||event.pointerType==="mouse")return;
+  if(isFullscreenActive()||inkActive||event.pointerType==="mouse")return;
   const now=performance.now();
   const current={x:event.clientX,y:event.clientY};
   const closeEnough=lastTapPoint&&Math.hypot(current.x-lastTapPoint.x,current.y-lastTapPoint.y)<28;
@@ -657,6 +748,13 @@ inkOverlay.addEventListener("pointerup",event=>{
 });
 
 updateInkUi();
+
+/* 全画面表示は閲覧専用。画面タップで通常表示へ戻る。 */
+stage.addEventListener("pointerup",event=>{
+  if(!isFullscreenActive())return;
+  event.preventDefault();
+  exitFullscreenView();
+});
 
 /* 選択譜面を、文化譜アプリ本来の読込キーへ一時的に置く */
 
@@ -793,17 +891,20 @@ function showPage(index){
   */
   const viewportWidth=window.visualViewport?.width||window.innerWidth;
   const viewportHeight=window.visualViewport?.height||window.innerHeight;
-  const headerHeight=Math.ceil(document.querySelector("header")?.getBoundingClientRect().height||58);
+  const fullscreen=isFullscreenActive();
+  const headerRect=document.querySelector("header")?.getBoundingClientRect();
+  const headerHeight=fullscreen?0:Math.ceil(headerRect?.height||58);
 
-  const availableWidth=Math.max(280,viewportWidth-24);
-  const availableHeight=Math.max(280,viewportHeight-headerHeight-28);
+  const availableWidth=Math.max(280,viewportWidth-(fullscreen?4:24));
+  const availableHeight=Math.max(280,viewportHeight-headerHeight-(fullscreen?4:28));
 
   const fullWidth=page.width+PAGE_SIDE_MARGIN*2;
   const fullHeight=page.height+PAGE_TOP_BOTTOM_MARGIN*2;
 
   const widthScale=availableWidth/fullWidth;
   const heightScale=availableHeight/fullHeight;
-  const scale=Math.min(MAX_VIEW_SCALE,widthScale,heightScale);
+  const maxScale=fullscreen?2.5:MAX_VIEW_SCALE;
+  const scale=Math.min(maxScale,widthScale,heightScale);
 
   stage.style.width=(fullWidth*scale)+"px";
   stage.style.height=(fullHeight*scale)+"px";

@@ -67,11 +67,16 @@ main{
   height:100%;
   pointer-events:auto;
   touch-action:manipulation;
-  overflow:hidden
+  overflow:hidden;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  background:rgba(64, 115, 220, .035)
 }
 #inkOverlay.is-drawing{
   touch-action:none;
-  cursor:crosshair
+  cursor:crosshair;
+  background:rgba(64, 115, 220, .065)
 }
 .ink-popup{
   position:fixed;

@@ -45,6 +45,9 @@ const VIEW_KEY="shian-scorebook-view-score";
 const EDIT_KEY="shian-bunkafu-editor-v2";
 const APP_URL="https://itohen0716.github.io/sianhu/";
 const DESKTOP_WIDTH=1200;
+const MAX_SCALE=1.22;
+const SAFE_MARGIN_X=28;
+const SAFE_MARGIN_Y=22;
 const raw=sessionStorage.getItem(VIEW_KEY);
 const frame=document.getElementById("frame");
 const shell=document.getElementById("shell");
@@ -87,22 +90,64 @@ let pages=[];
 let current=0;
 let geometry=null;
 
+function getHeaderHeight(){
+  const header=document.querySelector("header");
+  return header?Math.ceil(header.getBoundingClientRect().height):58;
+}
+
+function measurePageBounds(page,w){
+  const visibleRect=(el)=>{
+    if(!el)return null;
+    const st=w.getComputedStyle(el);
+    if(st.display==="none"||st.visibility==="hidden")return null;
+    const rect=el.getBoundingClientRect();
+    if(!(rect.width>0||rect.height>0))return null;
+    return rect;
+  };
+
+  const pageRect=page.getBoundingClientRect();
+  let left=pageRect.left;
+  let right=pageRect.right;
+  let top=pageRect.top;
+  let bottom=pageRect.bottom;
+
+  for(const el of page.querySelectorAll("*")){
+    const rect=visibleRect(el);
+    if(!rect)continue;
+    left=Math.min(left,rect.left);
+    right=Math.max(right,rect.right);
+    top=Math.min(top,rect.top);
+    bottom=Math.max(bottom,rect.bottom);
+  }
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width:Math.max(pageRect.width,right-left),
+    height:Math.max(pageRect.height,bottom-top)
+  };
+}
+
 function showPage(index){
   if(!geometry||!pages.length)return;
   current=Math.max(0,Math.min(index,pages.length-1));
   const pg=pages[current];
 
-  const availableWidth=Math.max(300,window.innerWidth-24);
-  const availableHeight=Math.max(360,window.innerHeight-100);
-  const scale=Math.min(1,availableWidth/geometry.pageWidth,availableHeight/geometry.pageHeight);
+  const availableWidth=Math.max(280,window.innerWidth-24);
+  const availableHeight=Math.max(320,window.innerHeight-getHeaderHeight()-24);
+  const targetWidth=pg.width+SAFE_MARGIN_X*2;
+  const targetHeight=pg.height+SAFE_MARGIN_Y*2;
+  const scale=Math.min(MAX_SCALE,availableWidth/targetWidth,availableHeight/targetHeight);
 
-  shell.style.width=(geometry.pageWidth*scale)+"px";
-  shell.style.height=(geometry.pageHeight*scale)+"px";
+  shell.style.width=(targetWidth*scale)+"px";
+  shell.style.height=(targetHeight*scale)+"px";
 
   frame.style.width=geometry.documentWidth+"px";
   frame.style.height=geometry.documentHeight+"px";
-  frame.style.left=(-(geometry.pageLeft*scale))+"px";
-  frame.style.top=(-((geometry.pageTop+pg.offsetTop)*scale))+"px";
+  frame.style.left=((SAFE_MARGIN_X-pg.left)*scale)+"px";
+  frame.style.top=((SAFE_MARGIN_Y-pg.top)*scale)+"px";
   frame.style.transform=`scale(${scale})`;
 
   document.getElementById("count").textContent=`${current+1} / ${pages.length} ページ`;
@@ -199,34 +244,24 @@ frame.addEventListener("load",async()=>{
     }catch(error){}
     restoreEditorStorage();
 
-    const firstRect=generated[0].getBoundingClientRect();
-    if(!firstRect.width||!firstRect.height)throw new Error("印刷ページ寸法を取得できませんでした");
+    const measuredPages=generated.map(page=>measurePageBounds(page,w));
+    if(!measuredPages.length||!measuredPages[0].width||!measuredPages[0].height){
+      throw new Error("印刷ページ寸法を取得できませんでした");
+    }
 
     const documentWidth=Math.max(
       d.documentElement.scrollWidth,
       d.body.scrollWidth,
-      Math.ceil(firstRect.right)
+      ...measuredPages.map(p=>Math.ceil(p.right+SAFE_MARGIN_X))
     );
-    const lastRect=generated[generated.length-1].getBoundingClientRect();
     const documentHeight=Math.max(
       d.documentElement.scrollHeight,
       d.body.scrollHeight,
-      Math.ceil(lastRect.bottom)
+      ...measuredPages.map(p=>Math.ceil(p.bottom+SAFE_MARGIN_Y))
     );
 
-    geometry={
-      pageWidth:firstRect.width,
-      pageHeight:firstRect.height,
-      pageLeft:firstRect.left,
-      pageTop:firstRect.top,
-      documentWidth,
-      documentHeight
-    };
-
-    pages=generated.map(page=>{
-      const rect=page.getBoundingClientRect();
-      return{offsetTop:rect.top-firstRect.top};
-    });
+    geometry={ documentWidth, documentHeight };
+    pages=measuredPages;
 
     showPage(0);
     loading.remove();

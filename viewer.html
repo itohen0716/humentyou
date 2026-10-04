@@ -85,8 +85,11 @@ main{
   position:relative;
   overflow:hidden;
   background:#fff;
-  box-shadow:0 3px 16px rgba(0,0,0,.16)
+  box-shadow:0 3px 16px rgba(0,0,0,.16);
+  transition:opacity .12s ease, transform .12s ease
 }
+#paperStage.page-swipe-next{opacity:.88;transform:translateX(-10px)}
+#paperStage.page-swipe-prev{opacity:.88;transform:translateX(10px)}
 #sourceFrame{
   position:absolute;
   left:0;
@@ -210,6 +213,21 @@ main{
   pointer-events:none
 }
 #inkState[hidden]{display:none}
+#fullscreenHint{
+  position:fixed;
+  z-index:108;
+  left:50%;
+  bottom:10px;
+  transform:translateX(-50%);
+  padding:6px 11px;
+  border-radius:999px;
+  background:rgba(51,44,37,.58);
+  color:#fff;
+  font-size:10px;
+  white-space:nowrap;
+  pointer-events:none
+}
+#fullscreenHint[hidden]{display:none}
 #loading{
   position:fixed;
   inset:58px 0 0;
@@ -311,6 +329,7 @@ main{
   <button id="inkFinish" type="button">書き込み終了</button>
 </div>
 <div id="inkState" hidden></div>
+<div id="fullscreenHint" hidden>← 次のページ　／　前のページ →　・タップで全画面終了</div>
 
 <div id="loading">印刷用の文化譜を準備しています…</div>
 
@@ -345,6 +364,7 @@ const inkCurrent=document.getElementById("inkCurrent");
 const inkPopup=document.getElementById("inkPopup");
 const inkActiveBar=document.getElementById("inkActiveBar");
 const inkState=document.getElementById("inkState");
+const fullscreenHint=document.getElementById("fullscreenHint");
 
 document.getElementById("back").onclick=()=>location.replace("./index.html");
 
@@ -389,6 +409,10 @@ function syncFullscreenView(){
   const active=isFullscreenActive();
   document.body.classList.toggle("fullscreen-view",active);
   fullscreenButton.textContent=active?"全画面表示中":"⛶ 全画面表示";
+  fullscreenHint.hidden=!active;
+  fullscreenHint.textContent=pages.length>1
+    ?"右から左へスワイプ：次へ　／　左から右へ：前へ　／　タップ：全画面終了"
+    :"タップで全画面表示を終了";
   requestAnimationFrame(()=>showPage(currentPage));
 }
 
@@ -749,11 +773,79 @@ inkOverlay.addEventListener("pointerup",event=>{
 
 updateInkUi();
 
-/* 全画面表示は閲覧専用。画面タップで通常表示へ戻る。 */
+/* 全画面表示は閲覧専用。
+   1タップ＝全画面終了。
+   右→左スワイプ＝次ページ、左→右スワイプ＝前ページ。 */
+let fullscreenGesture=null;
+const SWIPE_MIN_PX=55;
+const SWIPE_MAX_VERTICAL_RATIO=.75;
+const SWIPE_MAX_MS=900;
+
+stage.addEventListener("pointerdown",event=>{
+  if(!isFullscreenActive()||!event.isPrimary)return;
+  fullscreenGesture={
+    pointerId:event.pointerId,
+    startX:event.clientX,
+    startY:event.clientY,
+    startTime:performance.now()
+  };
+});
+
+stage.addEventListener("pointercancel",event=>{
+  if(fullscreenGesture?.pointerId===event.pointerId)fullscreenGesture=null;
+});
+
+function animatePageSwipe(direction){
+  const className=direction==="next"?"page-swipe-next":"page-swipe-prev";
+  stage.classList.remove("page-swipe-next","page-swipe-prev");
+  stage.classList.add(className);
+  window.setTimeout(()=>stage.classList.remove(className),130);
+}
+
 stage.addEventListener("pointerup",event=>{
-  if(!isFullscreenActive())return;
-  event.preventDefault();
-  exitFullscreenView();
+  if(!isFullscreenActive()||!fullscreenGesture||fullscreenGesture.pointerId!==event.pointerId)return;
+
+  const gesture=fullscreenGesture;
+  fullscreenGesture=null;
+
+  const dx=event.clientX-gesture.startX;
+  const dy=event.clientY-gesture.startY;
+  const elapsed=performance.now()-gesture.startTime;
+  const absX=Math.abs(dx);
+  const absY=Math.abs(dy);
+
+  const isSwipe=
+    pages.length>1 &&
+    elapsed<=SWIPE_MAX_MS &&
+    absX>=SWIPE_MIN_PX &&
+    absY<=Math.max(42,absX*SWIPE_MAX_VERTICAL_RATIO);
+
+  if(isSwipe){
+    event.preventDefault();
+
+    /* 指が右から左へ動いたら次へ */
+    if(dx<0&&currentPage<pages.length-1){
+      animatePageSwipe("next");
+      showPage(currentPage+1);
+      return;
+    }
+
+    /* 指が左から右へ動いたら前へ */
+    if(dx>0&&currentPage>0){
+      animatePageSwipe("prev");
+      showPage(currentPage-1);
+      return;
+    }
+
+    /* 端ページで外側へスワイプしても全画面は終了しない */
+    return;
+  }
+
+  /* 移動量が小さい＝タップ。全画面表示を終了する。 */
+  if(absX<22&&absY<22&&elapsed<700){
+    event.preventDefault();
+    exitFullscreenView();
+  }
 });
 
 /* 選択譜面を、文化譜アプリ本来の読込キーへ一時的に置く */

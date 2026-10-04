@@ -6,80 +6,198 @@
 <title>自動演奏｜文化譜面帳</title>
 <style>
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f5efe7}
-#loading{position:fixed;inset:0;display:grid;place-items:center;font-family:"Yu Gothic",sans-serif;color:#67574d;background:#f5efe7;z-index:2}
+#loading{
+  position:fixed;
+  inset:0;
+  display:grid;
+  place-items:center;
+  padding:24px;
+  font-family:"Yu Gothic",sans-serif;
+  color:#67574d;
+  background:#f5efe7;
+  z-index:2;
+  text-align:center
+}
 iframe{display:block;border:0;width:100%;height:100%;background:white}
 </style>
 </head>
 <body>
 <div id="loading">絲庵譜プレーヤーを開いています…</div>
 <iframe id="player" title="絲庵譜プレーヤー"></iframe>
+
 <script>
 (async()=>{
- const SCORE_KEY="shian-scorebook-player-score";
- const PLAYER_URL="https://itohen0716.github.io/Shin-Player-/";
- const frame=document.getElementById("player"),loading=document.getElementById("loading");
- const raw=sessionStorage.getItem(SCORE_KEY);
- if(!raw){loading.textContent="演奏する文化譜が選択されていません。";return}
- let payload;
- try{payload=JSON.parse(raw)}catch{loading.textContent="文化譜データを読み込めませんでした。";return}
+"use strict";
 
- try{
-   const res=await fetch(PLAYER_URL,{cache:"no-store"});
-   if(!res.ok)throw new Error("プレーヤーを取得できません。");
-   let html=await res.text();
-   // Relative assets in srcdoc resolve against the player repository.
-   html=html.replace(/<head([^>]*)>/i,'<head$1><base href="'+PLAYER_URL+'">');
-   frame.srcdoc=html;
- }catch(error){
-   console.error(error);
-   loading.textContent="絲庵譜プレーヤーを開けませんでした。";
-   return;
- }
+const SCORE_KEY="shian-scorebook-player-score";
+const PLAYER_URL="https://itohen0716.github.io/Shin-Player-/";
 
- frame.addEventListener("load",async()=>{
-   try{
-     const doc=frame.contentDocument, win=frame.contentWindow;
-     if(!doc||!win)throw new Error("プレーヤー画面を操作できません。");
+const frame=document.getElementById("player");
+const loading=document.getElementById("loading");
+const raw=sessionStorage.getItem(SCORE_KEY);
 
-     // Scorebook-only header. Nothing is written back to the player repository.
-     const style=doc.createElement("style");
-     style.textContent=`
-       .scorebook-return-header{height:64px;background:#fffaf3;border-bottom:1px solid #d8cbbd;display:flex;align-items:center;justify-content:space-between;width:min(1160px,calc(100% - 28px));max-width:calc(100% - 20px);margin:0 auto;padding:8px 14px;gap:24px;position:relative;z-index:10000;color:#332c26;font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",sans-serif;box-sizing:border-box}
-       .scorebook-return-brand{font-family:"Yu Mincho",serif;font-size:21px;font-weight:700;line-height:1.1}
-       .scorebook-return-brand small{display:block;font:9px sans-serif;letter-spacing:.2em;color:#766a60;margin-top:5px}
-       .scorebook-return-button{border:1px solid #abc2ca;border-radius:9px;background:#e9f1f3;color:#315f70;font-weight:700;padding:9px 14px;cursor:pointer;white-space:nowrap}
-       .scorebook-locked-control{opacity:.45!important;cursor:not-allowed!important;filter:grayscale(.35)!important}
-       @media(max-width:600px){.scorebook-return-header{height:58px;width:calc(100% - 20px);padding:7px 10px}.scorebook-return-brand{font-size:18px}.scorebook-return-button{padding:8px 10px;font-size:13px}}
-     `;
-     doc.head.appendChild(style);
+if(!raw){
+  loading.textContent="演奏する文化譜が選択されていません。";
+  return;
+}
 
-     const header=doc.createElement("header");
-     header.className="scorebook-return-header";
-     header.innerHTML='<div class="scorebook-return-brand">文化譜面帳<small>SHIAN SCORE BOOK</small></div><button type="button" class="scorebook-return-button">← 文化譜面帳へ戻る</button>';
-     doc.body.prepend(header);
-     header.querySelector("button").onclick=()=>{location.href="./index.html"};
+let payload;
+try{
+  payload=JSON.parse(raw);
+}catch(error){
+  loading.textContent="文化譜データを読み込めませんでした。";
+  return;
+}
 
-     const fileButton=doc.getElementById("file-button");
-     const fileInput=doc.getElementById("file-input");
-     if(fileButton){
-       fileButton.disabled=true;
-       fileButton.setAttribute("aria-disabled","true");
-       fileButton.classList.add("scorebook-locked-control");
-       fileButton.title="文化譜面帳から開いているため使用できません";
-     }
-     if(fileInput)fileInput.disabled=true;
+function wait(ms){
+  return new Promise(resolve=>setTimeout(resolve,ms));
+}
 
-     if(typeof win.importFile!=="function")throw new Error("プレーヤーの読込機能を確認できません。");
-     const scoreTitle=(payload&&payload.score&&payload.score.title)||payload.title||"score";
-     const file=new win.File([JSON.stringify(payload)],scoreTitle+".json",{type:"application/json"});
-     await win.importFile(file);
-     sessionStorage.removeItem(SCORE_KEY);
-     loading.remove();
-   }catch(error){
-     console.error(error);
-     loading.textContent="文化譜をプレーヤーへ読み込めませんでした。";
-   }
- });
+async function waitForImportFunction(win){
+  for(let i=0;i<100;i++){
+    if(typeof win.importFile==="function")return win.importFile;
+    await wait(50);
+  }
+  throw new Error("プレーヤーの読込機能を確認できません。");
+}
+
+async function initializePlayer(){
+  try{
+    const doc=frame.contentDocument;
+    const win=frame.contentWindow;
+
+    if(!doc||!win){
+      throw new Error("プレーヤー画面を操作できません。");
+    }
+
+    /*
+      プレーヤーGitHub本体は変更しない。
+      譜面帳経由時だけ、同一origin iframeへ戻るボタンとロック表示を追加する。
+    */
+    const style=doc.createElement("style");
+    style.id="scorebook-player-bridge-style";
+    style.textContent=`
+      .scorebook-return-header{
+        height:64px;
+        background:#fffaf3;
+        border-bottom:1px solid #d8cbbd;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        width:min(1160px,calc(100% - 28px));
+        max-width:calc(100% - 20px);
+        margin:0 auto;
+        padding:8px 14px;
+        gap:24px;
+        position:relative;
+        z-index:10000;
+        color:#332c26;
+        font-family:-apple-system,BlinkMacSystemFont,"Yu Gothic",sans-serif;
+        box-sizing:border-box
+      }
+      .scorebook-return-brand{
+        font-family:"Yu Mincho",serif;
+        font-size:21px;
+        font-weight:700;
+        line-height:1.1
+      }
+      .scorebook-return-brand small{
+        display:block;
+        font:9px sans-serif;
+        letter-spacing:.2em;
+        color:#766a60;
+        margin-top:5px
+      }
+      .scorebook-return-button{
+        border:1px solid #abc2ca;
+        border-radius:9px;
+        background:#e9f1f3;
+        color:#315f70;
+        font-weight:700;
+        padding:9px 14px;
+        cursor:pointer;
+        white-space:nowrap
+      }
+      .scorebook-locked-control{
+        opacity:.45!important;
+        cursor:not-allowed!important;
+        filter:grayscale(.35)!important
+      }
+      @media(max-width:600px){
+        .scorebook-return-header{
+          height:58px;
+          width:calc(100% - 20px);
+          padding:7px 10px
+        }
+        .scorebook-return-brand{font-size:18px}
+        .scorebook-return-button{padding:8px 10px;font-size:13px}
+      }
+    `;
+    doc.head.appendChild(style);
+
+    if(!doc.querySelector(".scorebook-return-header")){
+      const header=doc.createElement("header");
+      header.className="scorebook-return-header";
+      header.innerHTML=
+        '<div class="scorebook-return-brand">文化譜面帳<small>SHIAN SCORE BOOK</small></div>'+
+        '<button type="button" class="scorebook-return-button">← 文化譜面帳へ戻る</button>';
+      doc.body.prepend(header);
+      header.querySelector("button").onclick=()=>location.replace("./index.html");
+    }
+
+    const fileButton=doc.getElementById("file-button");
+    const fileInput=doc.getElementById("file-input");
+
+    if(fileButton){
+      fileButton.disabled=true;
+      fileButton.setAttribute("aria-disabled","true");
+      fileButton.classList.add("scorebook-locked-control");
+      fileButton.title="文化譜面帳から開いているため使用できません";
+    }
+    if(fileInput)fileInput.disabled=true;
+
+    const importFile=await waitForImportFunction(win);
+
+    const scoreTitle=
+      (payload&&payload.score&&payload.score.title) ||
+      payload.title ||
+      "score";
+
+    const file=new win.File(
+      [JSON.stringify(payload)],
+      scoreTitle+".json",
+      {type:"application/json"}
+    );
+
+    await importFile.call(win,file);
+
+    sessionStorage.removeItem(SCORE_KEY);
+    loading.remove();
+
+  }catch(error){
+    console.error(error);
+    loading.textContent=
+      "文化譜をプレーヤーへ読み込めませんでした。";
+  }
+}
+
+/*
+  v3.1:
+  以前は fetch → srcdoc を設定してから load listener を登録していたため、
+  srcdocのloadが先に終わると初期化処理が一度も呼ばれず、
+  「絲庵譜プレーヤーを開いています…」のまま停止する競合があった。
+
+  今回は listener を先に登録し、
+  公開中プレーヤーの実URLを同一origin iframeとして直接開く。
+*/
+frame.addEventListener("load",initializePlayer,{once:true});
+
+frame.addEventListener("error",()=>{
+  loading.textContent="絲庵譜プレーヤーを開けませんでした。";
+},{once:true});
+
+frame.src=PLAYER_URL;
+
 })();
 </script>
 </body>

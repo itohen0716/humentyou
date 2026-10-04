@@ -73,7 +73,17 @@ body.fullscreen-view main{
   align-items:center
 }
 body.fullscreen-view #paperStage{
-  box-shadow:none
+  box-shadow:none;
+  touch-action:none!important;
+  overscroll-behavior:none;
+  -webkit-user-select:none;
+  user-select:none
+}
+body.fullscreen-view #inkOverlay{
+  touch-action:none!important;
+  overscroll-behavior:none;
+  -webkit-user-select:none;
+  user-select:none
 }
 main{
   padding:18px 12px 40px;
@@ -370,8 +380,14 @@ document.getElementById("back").onclick=()=>location.replace("./index.html");
 
 const fullscreenButton=document.getElementById("fullscreenBtn");
 
+let softFullscreen=false;
+
 function isFullscreenActive(){
-  return Boolean(document.fullscreenElement||document.webkitFullscreenElement);
+  return Boolean(
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    softFullscreen
+  );
 }
 
 async function enterFullscreen(){
@@ -379,17 +395,28 @@ async function enterFullscreen(){
   if(typeof finishInkMode==="function")finishInkMode();
 
   const target=document.documentElement;
+
   try{
     if(target.requestFullscreen){
       await target.requestFullscreen();
-    }else if(target.webkitRequestFullscreen){
-      target.webkitRequestFullscreen();
-    }else{
-      alert("このブラウザでは全画面表示を利用できません。");
+      softFullscreen=false;
+      return;
     }
+
+    if(target.webkitRequestFullscreen){
+      target.webkitRequestFullscreen();
+      softFullscreen=false;
+      return;
+    }
+
+    /* Fullscreen API が使えないタブレットでは画面内全画面へ切り替える */
+    softFullscreen=true;
+    syncFullscreenView();
+
   }catch(error){
-    console.error(error);
-    alert("全画面表示を開始できませんでした。");
+    console.warn("ネイティブ全画面を開始できないため画面内全画面へ切り替えます。",error);
+    softFullscreen=true;
+    syncFullscreenView();
   }
 }
 
@@ -397,11 +424,20 @@ async function exitFullscreenView(){
   try{
     if(document.exitFullscreen&&document.fullscreenElement){
       await document.exitFullscreen();
-    }else if(document.webkitExitFullscreen&&document.webkitFullscreenElement){
+      return;
+    }
+
+    if(document.webkitExitFullscreen&&document.webkitFullscreenElement){
       document.webkitExitFullscreen();
+      return;
     }
   }catch(error){
-    console.error(error);
+    console.warn(error);
+  }
+
+  if(softFullscreen){
+    softFullscreen=false;
+    syncFullscreenView();
   }
 }
 
@@ -417,7 +453,13 @@ function syncFullscreenView(){
 }
 
 fullscreenButton.addEventListener("click",enterFullscreen);
-document.addEventListener("fullscreenchange",syncFullscreenView);
+document.addEventListener("fullscreenchange",()=>{
+  if(!document.fullscreenElement&&!document.webkitFullscreenElement&&softFullscreen===false){
+    syncFullscreenView();
+    return;
+  }
+  syncFullscreenView();
+});
 document.addEventListener("webkitfullscreenchange",syncFullscreenView);
 
 if(!raw){
@@ -775,25 +817,18 @@ updateInkUi();
 
 /* 全画面表示は閲覧専用。
    1タップ＝全画面終了。
-   右→左スワイプ＝次ページ、左→右スワイプ＝前ページ。 */
+   右→左スワイプ＝次ページ、左→右スワイプ＝前ページ。
+   タブレットではブラウザのスクロール判定に奪われないよう、
+   Pointer Events を capture で受け、古い環境には Touch Events を補助する。 */
 let fullscreenGesture=null;
-const SWIPE_MIN_PX=55;
-const SWIPE_MAX_VERTICAL_RATIO=.75;
-const SWIPE_MAX_MS=900;
+let touchGesture=null;
+const SWIPE_MAX_VERTICAL_RATIO=.9;
+const SWIPE_MAX_MS=1200;
 
-stage.addEventListener("pointerdown",event=>{
-  if(!isFullscreenActive()||!event.isPrimary)return;
-  fullscreenGesture={
-    pointerId:event.pointerId,
-    startX:event.clientX,
-    startY:event.clientY,
-    startTime:performance.now()
-  };
-});
-
-stage.addEventListener("pointercancel",event=>{
-  if(fullscreenGesture?.pointerId===event.pointerId)fullscreenGesture=null;
-});
+function swipeMinimum(){
+  const width=window.visualViewport?.width||window.innerWidth;
+  return Math.max(38,Math.min(72,width*.065));
+}
 
 function animatePageSwipe(direction){
   const className=direction==="next"?"page-swipe-next":"page-swipe-prev";
@@ -802,51 +837,129 @@ function animatePageSwipe(direction){
   window.setTimeout(()=>stage.classList.remove(className),130);
 }
 
-stage.addEventListener("pointerup",event=>{
-  if(!isFullscreenActive()||!fullscreenGesture||fullscreenGesture.pointerId!==event.pointerId)return;
+function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
+  if(!isFullscreenActive())return;
 
-  const gesture=fullscreenGesture;
-  fullscreenGesture=null;
-
-  const dx=event.clientX-gesture.startX;
-  const dy=event.clientY-gesture.startY;
-  const elapsed=performance.now()-gesture.startTime;
+  const dx=endX-startX;
+  const dy=endY-startY;
+  const elapsed=performance.now()-startTime;
   const absX=Math.abs(dx);
   const absY=Math.abs(dy);
+  const minSwipe=swipeMinimum();
 
   const isSwipe=
     pages.length>1 &&
     elapsed<=SWIPE_MAX_MS &&
-    absX>=SWIPE_MIN_PX &&
-    absY<=Math.max(42,absX*SWIPE_MAX_VERTICAL_RATIO);
+    absX>=minSwipe &&
+    absY<=Math.max(48,absX*SWIPE_MAX_VERTICAL_RATIO);
 
   if(isSwipe){
-    event.preventDefault();
+    event?.preventDefault?.();
 
-    /* 指が右から左へ動いたら次へ */
     if(dx<0&&currentPage<pages.length-1){
       animatePageSwipe("next");
       showPage(currentPage+1);
       return;
     }
 
-    /* 指が左から右へ動いたら前へ */
     if(dx>0&&currentPage>0){
       animatePageSwipe("prev");
       showPage(currentPage-1);
       return;
     }
 
-    /* 端ページで外側へスワイプしても全画面は終了しない */
+    /* 最初／最後のページで外側へスワイプしても終了しない */
     return;
   }
 
-  /* 移動量が小さい＝タップ。全画面表示を終了する。 */
-  if(absX<22&&absY<22&&elapsed<700){
-    event.preventDefault();
+  /* ごく小さい移動だけを「タップ」と判定する */
+  if(absX<26&&absY<26&&elapsed<800){
+    event?.preventDefault?.();
     exitFullscreenView();
   }
-});
+}
+
+/* Pointer Events 対応タブレット */
+stage.addEventListener("pointerdown",event=>{
+  if(!isFullscreenActive()||!event.isPrimary)return;
+
+  fullscreenGesture={
+    pointerId:event.pointerId,
+    startX:event.clientX,
+    startY:event.clientY,
+    startTime:performance.now()
+  };
+
+  try{stage.setPointerCapture(event.pointerId)}catch(error){}
+},{capture:true});
+
+stage.addEventListener("pointermove",event=>{
+  if(!isFullscreenActive()||!fullscreenGesture||fullscreenGesture.pointerId!==event.pointerId)return;
+  /* Android / タブレットで横スワイプをブラウザ操作へ渡さない */
+  event.preventDefault();
+},{capture:true});
+
+stage.addEventListener("pointercancel",event=>{
+  if(fullscreenGesture?.pointerId===event.pointerId)fullscreenGesture=null;
+},{capture:true});
+
+stage.addEventListener("pointerup",event=>{
+  if(!fullscreenGesture||fullscreenGesture.pointerId!==event.pointerId)return;
+
+  const gesture=fullscreenGesture;
+  fullscreenGesture=null;
+
+  try{stage.releasePointerCapture(event.pointerId)}catch(error){}
+
+  handleFullscreenGesture(
+    gesture.startX,
+    gesture.startY,
+    event.clientX,
+    event.clientY,
+    gesture.startTime,
+    event
+  );
+},{capture:true});
+
+/* Pointer Events が無い古いタブレット向け */
+if(!("PointerEvent" in window)){
+  stage.addEventListener("touchstart",event=>{
+    if(!isFullscreenActive()||event.touches.length!==1)return;
+    const touch=event.touches[0];
+    touchGesture={
+      startX:touch.clientX,
+      startY:touch.clientY,
+      startTime:performance.now()
+    };
+    event.preventDefault();
+  },{passive:false,capture:true});
+
+  stage.addEventListener("touchmove",event=>{
+    if(!isFullscreenActive()||!touchGesture)return;
+    event.preventDefault();
+  },{passive:false,capture:true});
+
+  stage.addEventListener("touchend",event=>{
+    if(!touchGesture)return;
+    const touch=event.changedTouches[0];
+    const gesture=touchGesture;
+    touchGesture=null;
+    if(!touch)return;
+
+    handleFullscreenGesture(
+      gesture.startX,
+      gesture.startY,
+      touch.clientX,
+      touch.clientY,
+      gesture.startTime,
+      event
+    );
+  },{passive:false,capture:true});
+
+  stage.addEventListener("touchcancel",()=>{
+    touchGesture=null;
+  },{capture:true});
+}
 
 /* 選択譜面を、文化譜アプリ本来の読込キーへ一時的に置く */
 

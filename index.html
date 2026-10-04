@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>文化譜面帳｜絲庵 v3.5</title>
+<title>文化譜面帳｜絲庵 v3.6</title>
 <style>
 :root{--bg:#f5efe7;--paper:#fffdfa;--ink:#2e251f;--line:#dfd0c1;--blue:#4b879d;--blue2:#e8f3f6}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:"Yu Mincho","Hiragino Mincho ProN","Noto Serif JP",serif}
@@ -88,7 +88,7 @@ header.top-header{align-items:center;gap:9px;padding-bottom:5px}
   <input class="search" id="search" type="search" placeholder="曲名を検索">
 </section>
 <main class="list" id="list"></main>
-<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v3.5</div>
+<div style="text-align:right;font:10px Arial,sans-serif;color:#b7a89b;margin-top:12px">v3.6</div>
 <div class="popup-overlay" id="viewDialog" aria-hidden="true"><div class="popup-center"><div class="popup-card" role="dialog" aria-modal="true"><h2>譜面に表示するもの</h2><div class="song-name" id="viewSongTitle"></div><div class="view-options" id="viewOptions"></div><p class="view-help">チェックを外した項目は、この閲覧時だけ非表示になります。保存済みの文化譜データは変更しません。</p><div class="modal-actions"><button type="button" id="viewCancel">キャンセル</button><button type="button" class="primary" id="viewGo">GO：譜面を見る</button></div></div></div></div>
 <input id="file" type="file" accept=".json,application/json" hidden>
 </div>
@@ -235,7 +235,9 @@ $("#viewGo").onclick=()=>{
  try{
   const cloned=JSON.parse(JSON.stringify(pendingView.payload)),score=scoreOfPayload(cloned);
   $("#viewOptions").querySelectorAll("input[data-view-key]").forEach(input=>{if(input.disabled)return;const key=input.dataset.viewKey;if(key==="lyrics")score.lyricsVisible=input.checked;else if(key==="vocal")score.vocalVisible=input.checked;else if(key.startsWith("layer:")){const i=Number(key.slice(6));if(Array.isArray(score.layers)&&score.layers[i]){score.layers[i].visible=input.checked;score.layers[i].printEnabled=input.checked}}});
-  sessionStorage.setItem("shian-scorebook-view-score",JSON.stringify(cloned));closePopup($("#viewDialog"));pendingView=null;location.href="./viewer.html";
+  sessionStorage.setItem("shian-scorebook-view-score",JSON.stringify(cloned));
+  sessionStorage.setItem("shian-scorebook-view-item-id",String(pendingView.id||""));
+  closePopup($("#viewDialog"));pendingView=null;location.href="./viewer.html";
  }catch(error){alert("譜面を開く準備ができませんでした。\\n"+(error?.message||error))}
 };
 render();

@@ -59,6 +59,116 @@ main{
   background:#fff;
   transform-origin:0 0
 }
+#inkOverlay{
+  position:absolute;
+  inset:0;
+  z-index:8;
+  width:100%;
+  height:100%;
+  pointer-events:auto;
+  touch-action:manipulation;
+  overflow:hidden
+}
+#inkOverlay.is-drawing{
+  touch-action:none;
+  cursor:crosshair
+}
+.ink-popup{
+  position:fixed;
+  z-index:120;
+  width:min(340px,calc(100vw - 24px));
+  padding:14px;
+  border:1px solid #cdbdad;
+  border-radius:14px;
+  background:#fffaf3;
+  box-shadow:0 10px 28px rgba(56,39,29,.24);
+  color:#332c25
+}
+.ink-popup[hidden]{display:none}
+.ink-popup-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px
+}
+.ink-popup-title{font:700 17px "Yu Mincho",serif}
+.ink-close{
+  width:36px;height:36px;padding:0;border-radius:50%;font-size:18px
+}
+.ink-section{margin-top:10px}
+.ink-label{display:block;margin-bottom:6px;font-size:12px;color:#786c60;font-weight:700}
+.ink-tools,.ink-widths,.ink-colors,.ink-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px
+}
+.ink-tools button,.ink-widths button,.ink-actions button{
+  min-height:42px
+}
+.ink-tools button.on,.ink-widths button.on{
+  background:#477d91;
+  color:#fff;
+  border-color:#477d91
+}
+.ink-color{
+  width:34px;
+  height:34px;
+  padding:0;
+  border:2px solid #fff;
+  outline:1px solid #cdbdad;
+  border-radius:50%;
+  cursor:pointer
+}
+.ink-color.on{outline:3px solid #477d91}
+#inkCustomColor{
+  width:44px;
+  height:36px;
+  padding:2px;
+  border:1px solid #cdbdad;
+  border-radius:8px;
+  background:#fff
+}
+.ink-actions{
+  justify-content:flex-end;
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid #e2d7cb
+}
+#inkStart{
+  background:#477d91;
+  color:#fff;
+  border-color:#477d91
+}
+.ink-active-bar{
+  position:fixed;
+  z-index:110;
+  right:14px;
+  bottom:14px;
+  display:flex;
+  gap:7px;
+  padding:7px;
+  border:1px solid #cdbdad;
+  border-radius:12px;
+  background:rgba(255,250,243,.96);
+  box-shadow:0 6px 18px rgba(56,39,29,.18)
+}
+.ink-active-bar[hidden]{display:none}
+.ink-active-bar button{min-height:40px}
+#inkState{
+  position:fixed;
+  z-index:109;
+  left:14px;
+  bottom:14px;
+  max-width:min(420px,calc(100vw - 28px));
+  padding:7px 10px;
+  border-radius:9px;
+  background:rgba(51,44,37,.82);
+  color:#fff;
+  font-size:11px;
+  pointer-events:none
+}
+#inkState[hidden]{display:none}
 #loading{
   position:fixed;
   inset:58px 0 0;
@@ -80,6 +190,9 @@ main{
     justify-self:center
   }
   #loading{inset:96px 0 0}
+  .ink-popup{left:12px!important;right:12px!important;top:auto!important;bottom:12px!important;width:auto}
+  .ink-active-bar{right:8px;bottom:8px}
+  #inkState{left:8px;bottom:62px}
 }
 </style>
 </head>
@@ -97,8 +210,59 @@ main{
 <main>
   <div id="paperStage">
     <iframe id="sourceFrame" title="文化譜 印刷ページ"></iframe>
+    <svg id="inkOverlay" aria-label="手書きレイヤー">
+      <g id="inkStrokes"></g>
+      <path id="inkCurrent" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
   </div>
 </main>
+
+<div id="inkPopup" class="ink-popup" hidden role="dialog" aria-modal="false" aria-label="手書き設定">
+  <div class="ink-popup-head">
+    <div class="ink-popup-title">手書き設定</div>
+    <button id="inkClose" class="ink-close" type="button" aria-label="閉じる">×</button>
+  </div>
+
+  <div class="ink-section">
+    <span class="ink-label">道具</span>
+    <div class="ink-tools">
+      <button type="button" data-ink-tool="pen" class="on">✎ ペン</button>
+      <button type="button" data-ink-tool="eraser">消しゴム</button>
+    </div>
+  </div>
+
+  <div class="ink-section">
+    <span class="ink-label">色</span>
+    <div class="ink-colors">
+      <button class="ink-color on" type="button" data-ink-color="#d92d20" style="background:#d92d20" aria-label="赤"></button>
+      <button class="ink-color" type="button" data-ink-color="#111111" style="background:#111111" aria-label="黒"></button>
+      <button class="ink-color" type="button" data-ink-color="#2463c5" style="background:#2463c5" aria-label="青"></button>
+      <button class="ink-color" type="button" data-ink-color="#16824b" style="background:#16824b" aria-label="緑"></button>
+      <button class="ink-color" type="button" data-ink-color="#e17b19" style="background:#e17b19" aria-label="橙"></button>
+      <input id="inkCustomColor" type="color" value="#d92d20" aria-label="その他の色">
+    </div>
+  </div>
+
+  <div class="ink-section">
+    <span class="ink-label">線幅</span>
+    <div class="ink-widths">
+      <button type="button" data-ink-width="2">細</button>
+      <button type="button" data-ink-width="4" class="on">中</button>
+      <button type="button" data-ink-width="7">太</button>
+    </div>
+  </div>
+
+  <div class="ink-actions">
+    <button id="inkUndo" type="button">↶ 1本戻す</button>
+    <button id="inkStart" type="button">書き込み開始</button>
+  </div>
+</div>
+
+<div id="inkActiveBar" class="ink-active-bar" hidden>
+  <button id="inkSettings" type="button">⚙ 設定</button>
+  <button id="inkFinish" type="button">書き込み終了</button>
+</div>
+<div id="inkState" hidden></div>
 
 <div id="loading">印刷用の文化譜を準備しています…</div>
 
@@ -113,7 +277,9 @@ main{
 */
 
 const VIEW_KEY="shian-scorebook-view-score";
+const VIEW_ITEM_KEY="shian-scorebook-view-item-id";
 const EDIT_KEY="shian-bunkafu-editor-v2";
+const INK_STORAGE_PREFIX="shian-scorebook-handwriting-v1:";
 const APP_URL="https://itohen0716.github.io/sianhu/";
 
 const PAGE_SIDE_MARGIN=24;
@@ -121,9 +287,16 @@ const PAGE_TOP_BOTTOM_MARGIN=18;
 const MAX_VIEW_SCALE=1.12;
 
 const raw=sessionStorage.getItem(VIEW_KEY);
+const viewItemId=sessionStorage.getItem(VIEW_ITEM_KEY)||"";
 const frame=document.getElementById("sourceFrame");
 const stage=document.getElementById("paperStage");
 const loading=document.getElementById("loading");
+const inkOverlay=document.getElementById("inkOverlay");
+const inkStrokes=document.getElementById("inkStrokes");
+const inkCurrent=document.getElementById("inkCurrent");
+const inkPopup=document.getElementById("inkPopup");
+const inkActiveBar=document.getElementById("inkActiveBar");
+const inkState=document.getElementById("inkState");
 
 document.getElementById("back").onclick=()=>location.replace("./index.html");
 
@@ -142,7 +315,346 @@ try{
   return;
 }
 
+
+/* ===== 譜面帳専用・永続手書きレイヤー ===== */
+const inkIdentity=viewItemId||("title:"+String(score.title||"untitled"));
+const inkStorageKey=INK_STORAGE_PREFIX+inkIdentity;
+let inkData={version:1,pages:{}};
+let inkTool="pen";
+let inkColor="#d92d20";
+let inkWidth=4;
+let inkActive=false;
+let activeStroke=null;
+let activePointerId=null;
+let eraseChanged=false;
+let currentFullWidth=1;
+let currentFullHeight=1;
+let lastTapTime=0;
+let lastTapPoint=null;
+
+try{
+  const saved=JSON.parse(localStorage.getItem(inkStorageKey)||"null");
+  if(saved&&saved.version===1&&saved.pages&&typeof saved.pages==="object")inkData=saved;
+}catch(error){
+  console.warn("手書きデータを読み込めませんでした。",error);
+}
+
+function pageInk(){
+  const key=String(currentPage);
+  if(!Array.isArray(inkData.pages[key]))inkData.pages[key]=[];
+  return inkData.pages[key];
+}
+
+function saveInk(){
+  try{
+    localStorage.setItem(inkStorageKey,JSON.stringify(inkData));
+    return true;
+  }catch(error){
+    console.error(error);
+    inkState.textContent="手書きを保存できませんでした。";
+    inkState.hidden=false;
+    return false;
+  }
+}
+
+function svgPointForStored(point,page){
+  return{
+    x:PAGE_SIDE_MARGIN+point.x*page.width,
+    y:PAGE_TOP_BOTTOM_MARGIN+point.y*page.height
+  };
+}
+
+function strokePath(stroke,page){
+  const pts=stroke.points||[];
+  if(!pts.length)return"";
+  const first=svgPointForStored(pts[0],page);
+  if(pts.length===1)return`M ${first.x.toFixed(2)} ${first.y.toFixed(2)} l .01 .01`;
+  return "M "+pts.map((pt,index)=>{
+    const p=svgPointForStored(pt,page);
+    return `${index?"L ":""}${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
+  }).join(" ");
+}
+
+function renderInk(){
+  if(!pages.length)return;
+  const page=pages[currentPage];
+  const strokes=pageInk();
+  inkStrokes.replaceChildren();
+
+  for(const stroke of strokes){
+    const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d",strokePath(stroke,page));
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke",stroke.color||"#d92d20");
+    path.setAttribute("stroke-width",String(Number(stroke.width)||4));
+    path.setAttribute("stroke-linecap","round");
+    path.setAttribute("stroke-linejoin","round");
+    inkStrokes.appendChild(path);
+  }
+}
+
+function configureInkOverlay(fullWidth,fullHeight){
+  currentFullWidth=Math.max(1,fullWidth);
+  currentFullHeight=Math.max(1,fullHeight);
+  inkOverlay.setAttribute("viewBox",`0 0 ${currentFullWidth} ${currentFullHeight}`);
+  renderInk();
+}
+
+function eventToPagePoint(event){
+  if(!pages.length)return null;
+  const rect=inkOverlay.getBoundingClientRect();
+  if(!rect.width||!rect.height)return null;
+  const x=(event.clientX-rect.left)/rect.width*currentFullWidth;
+  const y=(event.clientY-rect.top)/rect.height*currentFullHeight;
+  const page=pages[currentPage];
+  const px=x-PAGE_SIDE_MARGIN;
+  const py=y-PAGE_TOP_BOTTOM_MARGIN;
+  if(px<0||py<0||px>page.width||py>page.height)return null;
+  return{
+    x:px/page.width,
+    y:py/page.height,
+    pageX:px,
+    pageY:py
+  };
+}
+
+function distanceToSegment(px,py,ax,ay,bx,by){
+  const vx=bx-ax,vy=by-ay,wx=px-ax,wy=py-ay;
+  const len2=vx*vx+vy*vy;
+  const t=len2?Math.max(0,Math.min(1,(wx*vx+wy*vy)/len2)):0;
+  const dx=px-(ax+t*vx),dy=py-(ay+t*vy);
+  return Math.hypot(dx,dy);
+}
+
+function strokeTouches(stroke,point,page){
+  const pts=stroke.points||[];
+  if(!pts.length)return false;
+  const threshold=Math.max(10,(Number(stroke.width)||4)+7);
+  const converted=pts.map(p=>({x:p.x*page.width,y:p.y*page.height}));
+  if(converted.length===1)return Math.hypot(point.pageX-converted[0].x,point.pageY-converted[0].y)<=threshold;
+  for(let i=1;i<converted.length;i++){
+    if(distanceToSegment(point.pageX,point.pageY,converted[i-1].x,converted[i-1].y,converted[i].x,converted[i].y)<=threshold)return true;
+  }
+  return false;
+}
+
+function eraseAt(point){
+  const page=pages[currentPage],strokes=pageInk();
+  let changed=false;
+  for(let i=strokes.length-1;i>=0;i--){
+    if(strokeTouches(strokes[i],point,page)){
+      strokes.splice(i,1);
+      changed=true;
+    }
+  }
+  if(changed){
+    eraseChanged=true;
+    renderInk();
+  }
+}
+
+function updateInkUi(){
+  document.querySelectorAll("[data-ink-tool]").forEach(button=>{
+    button.classList.toggle("on",button.dataset.inkTool===inkTool);
+  });
+  document.querySelectorAll("[data-ink-width]").forEach(button=>{
+    button.classList.toggle("on",Number(button.dataset.inkWidth)===inkWidth);
+  });
+  document.querySelectorAll("[data-ink-color]").forEach(button=>{
+    button.classList.toggle("on",button.dataset.inkColor.toLowerCase()===inkColor.toLowerCase());
+  });
+  document.getElementById("inkCustomColor").value=inkColor;
+  inkOverlay.classList.toggle("is-drawing",inkActive);
+  inkActiveBar.hidden=!inkActive;
+  inkState.hidden=!inkActive;
+  if(inkActive){
+    inkState.textContent=inkTool==="eraser"
+      ?"消しゴム：触れた手書きを消します"
+      :"手書き中：指・タッチペン・マウスで書けます";
+  }
+}
+
+function openInkPopup(clientX=null,clientY=null){
+  updateInkUi();
+  inkPopup.hidden=false;
+
+  if(window.innerWidth<=700)return;
+
+  const margin=10;
+  const width=340;
+  const height=inkPopup.offsetHeight||330;
+  const x=clientX==null?window.innerWidth/2:clientX;
+  const y=clientY==null?window.innerHeight/2:clientY;
+  inkPopup.style.left=Math.max(margin,Math.min(window.innerWidth-width-margin,x-width/2))+"px";
+  inkPopup.style.top=Math.max(margin,Math.min(window.innerHeight-height-margin,y-height/2))+"px";
+}
+
+function closeInkPopup(){
+  inkPopup.hidden=true;
+}
+
+function startInkMode(){
+  inkActive=true;
+  closeInkPopup();
+  updateInkUi();
+}
+
+function finishInkMode(){
+  inkActive=false;
+  activeStroke=null;
+  activePointerId=null;
+  inkCurrent.setAttribute("d","");
+  closeInkPopup();
+  updateInkUi();
+}
+
+document.querySelectorAll("[data-ink-tool]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    inkTool=button.dataset.inkTool;
+    updateInkUi();
+  });
+});
+
+document.querySelectorAll("[data-ink-width]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    inkWidth=Number(button.dataset.inkWidth)||4;
+    updateInkUi();
+  });
+});
+
+document.querySelectorAll("[data-ink-color]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    inkColor=button.dataset.inkColor;
+    inkTool="pen";
+    updateInkUi();
+  });
+});
+
+document.getElementById("inkCustomColor").addEventListener("input",event=>{
+  inkColor=event.target.value;
+  inkTool="pen";
+  updateInkUi();
+});
+
+document.getElementById("inkClose").onclick=closeInkPopup;
+document.getElementById("inkStart").onclick=startInkMode;
+document.getElementById("inkSettings").onclick=()=>openInkPopup();
+document.getElementById("inkFinish").onclick=finishInkMode;
+
+document.getElementById("inkUndo").onclick=()=>{
+  const strokes=pageInk();
+  if(strokes.length){
+    strokes.pop();
+    saveInk();
+    renderInk();
+  }
+};
+
+inkOverlay.addEventListener("dblclick",event=>{
+  if(inkActive)return;
+  event.preventDefault();
+  openInkPopup(event.clientX,event.clientY);
+});
+
+inkOverlay.addEventListener("pointerdown",event=>{
+  if(!event.isPrimary)return;
+
+  if(!inkActive)return;
+
+  const point=eventToPagePoint(event);
+  if(!point)return;
+
+  event.preventDefault();
+  activePointerId=event.pointerId;
+  inkOverlay.setPointerCapture(event.pointerId);
+
+  if(inkTool==="eraser"){
+    eraseChanged=false;
+    eraseAt(point);
+    return;
+  }
+
+  activeStroke={
+    id:(crypto.randomUUID?.()||String(Date.now())+"-"+Math.random()),
+    color:inkColor,
+    width:inkWidth,
+    points:[{x:point.x,y:point.y}]
+  };
+  const page=pages[currentPage];
+  inkCurrent.setAttribute("stroke",inkColor);
+  inkCurrent.setAttribute("stroke-width",String(inkWidth));
+  inkCurrent.setAttribute("d",strokePath(activeStroke,page));
+});
+
+inkOverlay.addEventListener("pointermove",event=>{
+  if(!inkActive||event.pointerId!==activePointerId)return;
+  const point=eventToPagePoint(event);
+  if(!point)return;
+  event.preventDefault();
+
+  if(inkTool==="eraser"){
+    eraseAt(point);
+    return;
+  }
+
+  if(!activeStroke)return;
+  const points=activeStroke.points;
+  const last=points[points.length-1];
+  const page=pages[currentPage];
+  const dx=(point.x-last.x)*page.width;
+  const dy=(point.y-last.y)*page.height;
+  if(Math.hypot(dx,dy)<1.4)return;
+
+  points.push({x:point.x,y:point.y});
+  inkCurrent.setAttribute("d",strokePath(activeStroke,page));
+});
+
+function finishPointer(event){
+  if(event.pointerId!==activePointerId)return;
+
+  if(inkTool==="eraser"){
+    if(eraseChanged)saveInk();
+  }else if(activeStroke){
+    pageInk().push(activeStroke);
+    activeStroke=null;
+    inkCurrent.setAttribute("d","");
+    saveInk();
+    renderInk();
+  }
+
+  try{inkOverlay.releasePointerCapture(event.pointerId)}catch(error){}
+  activePointerId=null;
+}
+
+inkOverlay.addEventListener("pointerup",finishPointer);
+inkOverlay.addEventListener("pointercancel",event=>{
+  if(event.pointerId!==activePointerId)return;
+  activeStroke=null;
+  inkCurrent.setAttribute("d","");
+  activePointerId=null;
+});
+
+/* 指・ペンのダブルタップでも設定を開く（通常閲覧時のみ） */
+inkOverlay.addEventListener("pointerup",event=>{
+  if(inkActive||event.pointerType==="mouse")return;
+  const now=performance.now();
+  const current={x:event.clientX,y:event.clientY};
+  const closeEnough=lastTapPoint&&Math.hypot(current.x-lastTapPoint.x,current.y-lastTapPoint.y)<28;
+  if(closeEnough&&now-lastTapTime<380){
+    event.preventDefault();
+    lastTapTime=0;
+    lastTapPoint=null;
+    openInkPopup(event.clientX,event.clientY);
+  }else{
+    lastTapTime=now;
+    lastTapPoint=current;
+  }
+});
+
+updateInkUi();
+
 /* 選択譜面を、文化譜アプリ本来の読込キーへ一時的に置く */
+
 const previousEditorData=localStorage.getItem(EDIT_KEY);
 try{
   localStorage.setItem(EDIT_KEY,JSON.stringify(score));
@@ -290,6 +802,7 @@ function showPage(index){
 
   stage.style.width=(fullWidth*scale)+"px";
   stage.style.height=(fullHeight*scale)+"px";
+  configureInkOverlay(fullWidth,fullHeight);
 
   frame.style.width=documentSize.width+"px";
   frame.style.height=documentSize.height+"px";
@@ -306,8 +819,8 @@ function showPage(index){
   window.scrollTo({top:0,behavior:"instant"});
 }
 
-document.getElementById("prev").onclick=()=>showPage(currentPage-1);
-document.getElementById("next").onclick=()=>showPage(currentPage+1);
+document.getElementById("prev").onclick=()=>{activeStroke=null;activePointerId=null;inkCurrent.setAttribute("d","");showPage(currentPage-1)};
+document.getElementById("next").onclick=()=>{activeStroke=null;activePointerId=null;inkCurrent.setAttribute("d","");showPage(currentPage+1)};
 window.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 window.visualViewport?.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 
@@ -422,6 +935,7 @@ frame.addEventListener("load",async()=>{
 
     restoreEditorData();
     sessionStorage.removeItem(VIEW_KEY);
+    sessionStorage.removeItem(VIEW_ITEM_KEY);
 
     showPage(0);
     loading.remove();

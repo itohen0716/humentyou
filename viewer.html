@@ -70,6 +70,7 @@ body.fullscreen-view header{
 body.fullscreen-view main{
   padding:0!important;
   min-height:100vh;
+  min-height:100dvh;
   align-items:center
 }
 body.fullscreen-view #paperStage{
@@ -86,13 +87,16 @@ body.fullscreen-view #inkOverlay{
   user-select:none
 }
 main{
-  padding:18px 12px 40px;
+  min-height:calc(100vh - var(--viewer-header-height,58px));
+  min-height:calc(100dvh - var(--viewer-header-height,58px));
+  padding:8px;
   display:flex;
   justify-content:center;
-  align-items:flex-start
+  align-items:center
 }
 #paperStage{
   position:relative;
+  flex:0 0 auto;
   overflow:hidden;
   background:#fff;
   box-shadow:0 3px 16px rgba(0,0,0,.16);
@@ -120,7 +124,7 @@ main{
   user-select:none;
   -webkit-user-select:none;
   -webkit-tap-highlight-color:transparent;
-  background:rgba(64, 115, 220, .035)
+  background:transparent
 }
 #inkOverlay.is-drawing{
   touch-action:none;
@@ -357,11 +361,16 @@ const VIEW_KEY="shian-scorebook-view-score";
 const VIEW_ITEM_KEY="shian-scorebook-view-item-id";
 const EDIT_KEY="shian-bunkafu-editor-v2";
 const INK_STORAGE_PREFIX="shian-scorebook-handwriting-v1:";
-const APP_URL="https://itohen0716.github.io/sianhu/";
+/* 公開版は今までの作成アプリを使用。ローカル検証時だけ同梱の写譜アプリを同一originで使用する。 */
+const APP_URL=["127.0.0.1","localhost"].includes(location.hostname)
+  ? new URL("./sianhu/index.html",location.href).href
+  : "https://itohen0716.github.io/sianhu/";
 
 const PAGE_SIDE_MARGIN=24;
 const PAGE_TOP_BOTTOM_MARGIN=18;
-const MAX_VIEW_SCALE=1.12;
+/* 印刷前の写譜座標は、端末幅に左右されないPC基準の1200pxで確定する。 */
+const PRINT_SOURCE_WIDTH=1200;
+const PRINT_SOURCE_HEIGHT=900;
 
 const raw=sessionStorage.getItem(VIEW_KEY);
 const viewItemId=sessionStorage.getItem(VIEW_ITEM_KEY)||"";
@@ -1088,28 +1097,30 @@ function showPage(index){
   currentPage=Math.max(0,Math.min(index,pages.length-1));
   const page=pages[currentPage];
 
-  /*
-    v3.4:
-    デバイス／ウィンドウの実表示領域を取得し、
-    文化譜1ページ全体が必ず画面内へ収まる倍率を自動計算する。
-    横幅だけでなく高さも判定する。
-  */
+  /* ページ送りの表示でヘッダー高が変わるので、先にUIを更新する。 */
+  document.getElementById("count").textContent=
+    `${currentPage+1} / ${pages.length} ページ`;
+  document.getElementById("prev").disabled=currentPage===0;
+  document.getElementById("next").disabled=currentPage===pages.length-1;
+  document.getElementById("pager").hidden=pages.length<=1;
+
+  /* 印刷済みページを再配置しない。端末で利用可能な幅と高さに同じ倍率で合わせる。 */
   const viewportWidth=window.visualViewport?.width||window.innerWidth;
   const viewportHeight=window.visualViewport?.height||window.innerHeight;
   const fullscreen=isFullscreenActive();
   const headerRect=document.querySelector("header")?.getBoundingClientRect();
-  const headerHeight=fullscreen?0:Math.ceil(headerRect?.height||58);
-
-  const availableWidth=Math.max(280,viewportWidth-(fullscreen?4:24));
-  const availableHeight=Math.max(280,viewportHeight-headerHeight-(fullscreen?4:28));
+  const headerHeight=fullscreen?0:Math.ceil(headerRect?.height||0);
+  document.documentElement.style.setProperty("--viewer-header-height",`${headerHeight}px`);
+  const main=document.querySelector("main");
+  const padding=getComputedStyle(main);
+  const horizontalPadding=parseFloat(padding.paddingLeft)+parseFloat(padding.paddingRight);
+  const verticalPadding=parseFloat(padding.paddingTop)+parseFloat(padding.paddingBottom);
+  const availableWidth=Math.max(1,viewportWidth-horizontalPadding);
+  const availableHeight=Math.max(1,viewportHeight-headerHeight-verticalPadding);
 
   const fullWidth=page.width+PAGE_SIDE_MARGIN*2;
   const fullHeight=page.height+PAGE_TOP_BOTTOM_MARGIN*2;
-
-  const widthScale=availableWidth/fullWidth;
-  const heightScale=availableHeight/fullHeight;
-  const maxScale=fullscreen?2.5:MAX_VIEW_SCALE;
-  const scale=Math.min(maxScale,widthScale,heightScale);
+  const scale=Math.min(availableWidth/fullWidth,availableHeight/fullHeight);
 
   stage.style.width=(fullWidth*scale)+"px";
   stage.style.height=(fullHeight*scale)+"px";
@@ -1121,12 +1132,6 @@ function showPage(index){
   frame.style.top=((PAGE_TOP_BOTTOM_MARGIN-page.top)*scale)+"px";
   frame.style.transform=`scale(${scale})`;
 
-  document.getElementById("count").textContent=
-    `${currentPage+1} / ${pages.length} ページ`;
-  document.getElementById("prev").disabled=currentPage===0;
-  document.getElementById("next").disabled=currentPage===pages.length-1;
-  document.getElementById("pager").hidden=pages.length<=1;
-
   window.scrollTo({top:0,behavior:"instant"});
 }
 
@@ -1134,6 +1139,7 @@ document.getElementById("prev").onclick=()=>{activeStroke=null;activePointerId=n
 document.getElementById("next").onclick=()=>{activeStroke=null;activePointerId=null;inkCurrent.setAttribute("d","");showPage(currentPage+1)};
 window.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 window.visualViewport?.addEventListener("resize",()=>showPage(currentPage),{passive:true});
+window.addEventListener("orientationchange",()=>requestAnimationFrame(()=>showPage(currentPage)),{passive:true});
 
 frame.addEventListener("load",async()=>{
   try{
@@ -1141,18 +1147,9 @@ frame.addEventListener("load",async()=>{
     const d=frame.contentDocument;
     if(!w||!d)throw new Error("文化譜アプリへアクセスできません");
 
-    /*
-      最重要点:
-      固定1200pxにはしない。
-      ユーザーが文化譜作成アプリを普通に開く時と同じ
-      「現在のブラウザ表示幅」で初回描画させる。
-      print-v2.js のコメント位置変換は、この通常画面の実座標を参照するため。
-    */
-    const normalViewportWidth=Math.max(900,window.innerWidth);
-    const normalViewportHeight=Math.max(700,window.innerHeight);
-
-    frame.style.width=normalViewportWidth+"px";
-    frame.style.height=normalViewportHeight+"px";
+    /* コメントの印刷座標を端末幅から独立させる。印刷前の写譜画面は常に同じPC幅。 */
+    frame.style.width=PRINT_SOURCE_WIDTH+"px";
+    frame.style.height=PRINT_SOURCE_HEIGHT+"px";
 
     await waitForStableNormalLayout(w,d);
 
@@ -1207,6 +1204,8 @@ frame.addEventListener("load",async()=>{
     `;
     d.head.appendChild(screenPrintStyle);
 
+    /* 印刷用書体の読み込み後に、完成したページだけを実測する。 */
+    try{await d.fonts?.ready}catch(error){}
     await waitFrames(3);
 
     printedPages=[...printRoot.querySelectorAll(".pv2-page")];
@@ -1258,12 +1257,9 @@ frame.addEventListener("load",async()=>{
   }
 });
 
-/*
-  読み込み開始時点から「現在のブラウザ幅」を与える。
-  display:none にはせず、実レイアウトを作らせる。
-*/
-frame.style.width=Math.max(900,window.innerWidth)+"px";
-frame.style.height=Math.max(700,window.innerHeight)+"px";
+/* 印刷用の元座標はPC・タブレット・スマホのどれでも一定にする。 */
+frame.style.width=PRINT_SOURCE_WIDTH+"px";
+frame.style.height=PRINT_SOURCE_HEIGHT+"px";
 frame.src=APP_URL;
 
 })();

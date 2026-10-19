@@ -28,6 +28,7 @@ header{
 }
 h1{margin:0;font:19px "Yu Mincho",serif}
 .pager{display:flex;align-items:center;gap:10px}
+.pager[hidden]{display:none}
 button{
   border:1px solid #abc2ca;
   border-radius:9px;
@@ -359,6 +360,10 @@ main{
 
 const VIEW_KEY="shian-scorebook-view-score";
 const VIEW_ITEM_KEY="shian-scorebook-view-item-id";
+const LIBRARY_KEY="shian-scorebook-library-v2";
+const ACTIVE_SETLIST_KEY="shian-scorebook-active-setlist-v1";
+const SETLIST_TARGET_KEY="shian-scorebook-setlist-target-page-v1";
+const SETLIST_FULLSCREEN_KEY="shian-scorebook-setlist-keep-fullscreen-v1";
 const EDIT_KEY="shian-bunkafu-editor-v2";
 const INK_STORAGE_PREFIX="shian-scorebook-handwriting-v1:";
 /* 公開版は今までの作成アプリを使用。ローカル検証時だけ同梱の写譜アプリを同一originで使用する。 */
@@ -374,6 +379,12 @@ const PRINT_SOURCE_HEIGHT=900;
 
 const raw=sessionStorage.getItem(VIEW_KEY);
 const viewItemId=sessionStorage.getItem(VIEW_ITEM_KEY)||"";
+let activeSetlist=null;
+try{
+ const state=JSON.parse(sessionStorage.getItem(ACTIVE_SETLIST_KEY)||"null");
+ if(state&&Array.isArray(state.itemIds)&&state.itemIds.length&&Number.isInteger(state.index)&&state.index>=0&&state.index<state.itemIds.length&&state.name){activeSetlist=state}
+}catch(error){console.warn("セットリスト情報を読み込めませんでした。",error)}
+
 const frame=document.getElementById("sourceFrame");
 const stage=document.getElementById("paperStage");
 const loading=document.getElementById("loading");
@@ -385,7 +396,12 @@ const inkActiveBar=document.getElementById("inkActiveBar");
 const inkState=document.getElementById("inkState");
 const fullscreenHint=document.getElementById("fullscreenHint");
 
-document.getElementById("back").onclick=()=>location.replace("./index.html");
+document.getElementById("back").onclick=()=>{
+ sessionStorage.removeItem(ACTIVE_SETLIST_KEY);
+ sessionStorage.removeItem(SETLIST_FULLSCREEN_KEY);
+ sessionStorage.removeItem(SETLIST_TARGET_KEY);
+ location.replace("./index.html");
+};
 
 const fullscreenButton=document.getElementById("fullscreenBtn");
 
@@ -455,7 +471,7 @@ function syncFullscreenView(){
   document.body.classList.toggle("fullscreen-view",active);
   fullscreenButton.textContent=active?"全画面表示中":"⛶ 全画面表示";
   fullscreenHint.hidden=!active;
-  fullscreenHint.textContent=pages.length>1
+  fullscreenHint.textContent=pages.length>1||(activeSetlist&&activeSetlist.itemIds.length>1)
     ?"右から左へスワイプ：次へ　／　左から右へ：前へ　／　タップ：全画面終了"
     :"タップで全画面表示を終了";
   requestAnimationFrame(()=>showPage(currentPage));
@@ -486,6 +502,12 @@ try{
   return;
 }
 
+
+if(activeSetlist){
+ const currentName=String(score.title||payload?.title||"文化譜");
+ document.querySelector("header h1").textContent=activeSetlist.name+"｜"+currentName;
+ document.getElementById("back").textContent="← セットリストを閉じる";
+}
 
 /* ===== 譜面帳専用・永続手書きレイヤー ===== */
 const inkIdentity=viewItemId||("title:"+String(score.title||"untitled"));
@@ -857,7 +879,7 @@ function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
   const minSwipe=swipeMinimum();
 
   const isSwipe=
-    pages.length>1 &&
+    (pages.length>1||(activeSetlist&&activeSetlist.itemIds.length>1)) &&
     elapsed<=SWIPE_MAX_MS &&
     absX>=minSwipe &&
     absY<=Math.max(48,absX*SWIPE_MAX_VERTICAL_RATIO);
@@ -865,15 +887,15 @@ function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
   if(isSwipe){
     event?.preventDefault?.();
 
-    if(dx<0&&currentPage<pages.length-1){
+    if(dx<0){
       animatePageSwipe("next");
-      showPage(currentPage+1);
+      moveViewerPage(1);
       return;
     }
 
-    if(dx>0&&currentPage>0){
+    if(dx>0){
       animatePageSwipe("prev");
-      showPage(currentPage-1);
+      moveViewerPage(-1);
       return;
     }
 
@@ -1098,11 +1120,12 @@ function showPage(index){
   const page=pages[currentPage];
 
   /* ページ送りの表示でヘッダー高が変わるので、先にUIを更新する。 */
-  document.getElementById("count").textContent=
-    `${currentPage+1} / ${pages.length} ページ`;
-  document.getElementById("prev").disabled=currentPage===0;
-  document.getElementById("next").disabled=currentPage===pages.length-1;
-  document.getElementById("pager").hidden=pages.length<=1;
+  document.getElementById("count").textContent=activeSetlist
+    ? `${activeSetlist.index+1} / ${activeSetlist.itemIds.length} 譜`+(pages.length>1?`（${currentPage+1}/${pages.length}ページ）`:"")
+    : `${currentPage+1} / ${pages.length} ページ`;
+  document.getElementById("prev").disabled=currentPage===0&&(!activeSetlist||activeSetlist.index===0);
+  document.getElementById("next").disabled=currentPage===pages.length-1&&(!activeSetlist||activeSetlist.index===activeSetlist.itemIds.length-1);
+  document.getElementById("pager").hidden=pages.length<=1&&!(activeSetlist&&activeSetlist.itemIds.length>1);
 
   /* 印刷済みページを再配置しない。端末で利用可能な幅と高さに同じ倍率で合わせる。 */
   const viewportWidth=window.visualViewport?.width||window.innerWidth;
@@ -1135,8 +1158,32 @@ function showPage(index){
   window.scrollTo({top:0,behavior:"instant"});
 }
 
-document.getElementById("prev").onclick=()=>{activeStroke=null;activePointerId=null;inkCurrent.setAttribute("d","");showPage(currentPage-1)};
-document.getElementById("next").onclick=()=>{activeStroke=null;activePointerId=null;inkCurrent.setAttribute("d","");showPage(currentPage+1)};
+function moveViewerPage(delta){
+ if(!pages.length)return;
+ activeStroke=null;activePointerId=null;inkCurrent.setAttribute("d","");
+ const page=currentPage+delta;
+ if(page>=0&&page<pages.length){showPage(page);return}
+ if(!activeSetlist)return;
+ const nextIndex=activeSetlist.index+delta;
+ if(nextIndex<0||nextIndex>=activeSetlist.itemIds.length)return;
+ let lib;
+ try{lib=JSON.parse(localStorage.getItem(LIBRARY_KEY)||"[]")}catch(error){lib=[]}
+ const next=Array.isArray(lib)?lib.find(item=>String(item.id)===String(activeSetlist.itemIds[nextIndex])):null;
+ if(!next||!next.payload){alert("次の譜面が譜面帳に見つかりません。セットリストを確認してください。");return}
+ try{
+  if(typeof finishInkMode==="function")finishInkMode();
+  sessionStorage.setItem("shian-scorebook-view-score",JSON.stringify(next.payload));
+  sessionStorage.setItem(VIEW_ITEM_KEY,String(next.id));
+  sessionStorage.setItem(ACTIVE_SETLIST_KEY,JSON.stringify({...activeSetlist,index:nextIndex}));
+  sessionStorage.setItem(SETLIST_TARGET_KEY,delta<0?"last":"first");
+  if(isFullscreenActive())sessionStorage.setItem(SETLIST_FULLSCREEN_KEY,"1");
+  else sessionStorage.removeItem(SETLIST_FULLSCREEN_KEY);
+  restoreEditorData();
+  location.replace("./viewer.html");
+ }catch(error){alert("次の譜面を開けませんでした。\n"+(error?.message||error))}
+}
+document.getElementById("prev").onclick=()=>moveViewerPage(-1);
+document.getElementById("next").onclick=()=>moveViewerPage(1);
 window.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 window.visualViewport?.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 window.addEventListener("orientationchange",()=>requestAnimationFrame(()=>showPage(currentPage)),{passive:true});
@@ -1247,7 +1294,15 @@ frame.addEventListener("load",async()=>{
     sessionStorage.removeItem(VIEW_KEY);
     sessionStorage.removeItem(VIEW_ITEM_KEY);
 
-    showPage(0);
+    const targetPage=sessionStorage.getItem(SETLIST_TARGET_KEY);
+    sessionStorage.removeItem(SETLIST_TARGET_KEY);
+    showPage(targetPage==="last"?pages.length-1:0);
+    if(activeSetlist&&sessionStorage.getItem(SETLIST_FULLSCREEN_KEY)==="1"){
+      sessionStorage.removeItem(SETLIST_FULLSCREEN_KEY);
+      /* 再読込をまたぐネイティブ全画面は再要求できないため、画面内全画面を維持する。 */
+      softFullscreen=true;
+      syncFullscreenView();
+    }
     loading.remove();
 
   }catch(error){

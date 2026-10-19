@@ -26,6 +26,31 @@ header.top-header{display:flex;align-items:center;justify-content:space-between;
 .title{font-size:17px;flex:1;min-width:120px}.actions{display:flex;align-items:center;gap:7px}.actions button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:9px 12px;font-weight:700;color:#43362e}
 .actions .view{background:var(--blue2);border-color:#9fc1ce;color:#315f70}.delete{font-size:10px!important;border:0!important;background:transparent!important;color:#8a776b!important;padding:4px!important}
 .empty{text-align:center;color:#8a776b;padding:42px 10px;font-size:14px}
+/* セットリスト機能。譜面帳本体の保存形式とは独立させる。 */
+.modebar{display:flex;gap:8px;align-items:center;padding:13px 0 0}
+.modebar button{background:#fffdfa;border:1px solid var(--line);border-radius:11px;padding:10px 18px;font:700 14px "Yu Gothic",sans-serif;cursor:pointer}
+.modebar button.active{background:#30271f;color:white;border-color:#30271f}
+.setlist-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 0}
+.setlist-toolbar[hidden]{display:none}
+.setlist-toolbar p{font-size:12px;color:#7d6e65;margin:0}
+.setlist-toolbar button{border:0;border-radius:9px;background:var(--blue);color:#fff;padding:10px 12px;font-weight:700;cursor:pointer}
+.set-card{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:13px 14px;box-shadow:0 1px 3px #0000000d}
+.set-card-head{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+.set-folder{font:600 18px "Yu Mincho",serif;background:transparent;border:0;color:var(--ink);cursor:pointer;text-align:left;flex:1;min-width:155px;padding:6px 0}
+.set-folder small{font:12px "Yu Gothic",sans-serif;color:#8a776b;margin-left:8px}
+.set-member-list{margin:9px 0 0 14px;padding:8px 0 2px 15px;border-left:2px solid #e9ddd1;font-size:14px;line-height:1.9}
+.set-editor-list{border:1px solid var(--line);border-radius:9px;background:white;max-height:200px;overflow:auto;padding:5px 10px}
+.set-editor-option{display:flex;align-items:center;gap:10px;border-bottom:1px solid #f0e9e1;padding:7px 2px;font-size:14px;cursor:pointer}
+.set-editor-option:last-child{border-bottom:none}
+.set-editor-option input{width:18px;height:18px;accent-color:var(--blue);flex:0 0 auto}
+.set-chosen-row{display:flex;align-items:center;gap:7px;border-bottom:1px solid #ece1d7;padding:7px 2px;font-size:14px}
+.set-chosen-row:last-child{border-bottom:none}
+.set-chosen-row span{flex:1;min-width:0}
+.set-chosen-row button{border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 9px;cursor:pointer}
+.setlist-dialog .popup-center{max-width:540px}
+.setlist-dialog .popup-card{max-height:calc(100vh - 40px);overflow:auto}
+.setlist-dialog .field{margin:10px 0}
+
 .popup-overlay{position:fixed;inset:0;z-index:9999;display:none;background:rgba(43,35,29,.55)}
 .popup-overlay.open{display:block}
 .popup-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:calc(100% - 36px);max-width:460px}
@@ -38,6 +63,10 @@ header.top-header{display:flex;align-items:center;justify-content:space-between;
 .note{font-size:12px;color:#7d6e65;line-height:1.65;margin:10px 0 0}
 .view-options{display:grid;gap:10px;margin-top:12px}.view-option{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 12px;background:#f7f1ea;border:1px solid #e2d4c7;border-radius:9px}.view-option span{font-size:14px}.view-option input{width:20px;height:20px;accent-color:var(--blue)}.view-option.disabled{opacity:.45}.view-help{font-size:11px;color:#7d6e65;line-height:1.55;margin:9px 0 0}
 @media(max-width:620px){
+.modebar{padding-top:9px}.modebar button{padding:8px 11px;font-size:12px}
+.set-card-head .actions{width:auto;flex-wrap:wrap;gap:4px}
+.set-folder{font-size:16px}
+
 .app{padding:9px 10px 28px}
 header.top-header{align-items:center;gap:9px;padding-bottom:5px}
 .brand-block{gap:10px}
@@ -71,7 +100,15 @@ header.top-header{align-items:center;gap:9px;padding-bottom:5px}
     <p class="update-note">譜面を更新したら再追加で更新してください</p>
   </div>
 </header>
-<section class="tools">
+<div class="modebar" role="group" aria-label="譜面帳の表示切り替え">
+  <button id="libraryMode" class="active" type="button" aria-pressed="true">文化譜一覧</button>
+  <button id="setlistMode" type="button" aria-pressed="false">セットリスト</button>
+</div>
+<section id="setlistToolbar" class="setlist-toolbar" hidden>
+  <p>選んだ譜面だけを、好きな順番で連続表示します。</p>
+  <button id="createSetlist" type="button">＋ セットリスト作成</button>
+</section>
+<section class="tools" id="libraryTools">
   <div class="kana" id="kana">
 <button type="button" class="active" data-row="すべて">すべて</button>
 <button type="button" data-row="あ">あ</button>
@@ -109,15 +146,32 @@ header.top-header{align-items:center;gap:9px;padding-bottom:5px}
 <div class="modal-actions"><button type="button" id="duplicateCancel">キャンセル</button><button type="button" class="primary" id="duplicateUpdate">更新</button></div>
 </div></div></div>
 
+<div class="popup-overlay setlist-dialog" id="setlistDialog" aria-hidden="true">
+  <div class="popup-center"><div class="popup-card" role="dialog" aria-modal="true" aria-labelledby="setlistDialogTitle">
+    <h2 id="setlistDialogTitle">セットリストを作成</h2>
+    <div class="field"><label for="setlistName">フォルダ名（セットリスト名）</label><input id="setlistName" maxlength="80" placeholder="例：じょんがら節"></div>
+    <div class="field"><label>登録する譜面を選ぶ</label><div id="setlistCandidates" class="set-editor-list"></div></div>
+    <div class="field"><label>表示する順番（↑↓で並び替え）</label><div id="setlistChosen" class="set-editor-list"></div></div>
+    <p class="note">譜面帳にある元の譜面は移動・削除されません。セットリストには譜面の参照だけを保存します。</p>
+    <div class="modal-actions"><button type="button" id="setlistCancel">キャンセル</button><button class="primary" type="button" id="setlistSave">保存</button></div>
+  </div></div>
+</div>
 <script>
 (()=>{
 const KEY="shian-scorebook-library-v2";
+const SETLIST_KEY="shian-scorebook-setlists-v1";
+const ACTIVE_SETLIST_KEY="shian-scorebook-active-setlist-v1";
 const ROWS=["すべて","あ","か","さ","た","な","は","ま","や","ら","わ"];
 let active="すべて", pending=null, duplicateIndex=-1, pendingView=null;
+let showSetlists=false, editingSetlistId=null, chosenItemIds=[];
+const expandedSetlists=new Set();
 const $=s=>document.querySelector(s), list=$("#list"), file=$("#file"), collator=new Intl.Collator("ja",{sensitivity:"base",numeric:true});
 
 function load(){try{const x=JSON.parse(localStorage.getItem(KEY)||"[]");return Array.isArray(x)?x:[]}catch{return []}}
 function save(x){localStorage.setItem(KEY,JSON.stringify(x))}
+function loadSetlists(){try{const x=JSON.parse(localStorage.getItem(SETLIST_KEY)||"[]");return Array.isArray(x)?x:[]}catch{return []}}
+function saveSetlists(x){localStorage.setItem(SETLIST_KEY,JSON.stringify(x))}
+function newId(){return (globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():"set-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)}
 function hira(s=""){return s.normalize("NFKC").replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)).replace(/\s+/g,"").toLowerCase()}
 function baseKana(s=""){return hira(s).normalize("NFD").replace(/[\u3099\u309A]/g,"").normalize("NFC").replace(/[ぁぃぅぇぉ]/g,c=>({"ぁ":"あ","ぃ":"い","ぅ":"う","ぇ":"え","ぉ":"お"}[c])).replace(/[ゃゅょ]/g,c=>({"ゃ":"や","ゅ":"ゆ","ょ":"よ"}[c])).replace("っ","つ")}
 function rowOf(reading){
@@ -161,6 +215,7 @@ function hasLyrics(score){return Array.isArray(score?.lyrics)&&score.lyrics.some
 function hasVocal(score){return Array.isArray(score?.vocalNotes)&&score.vocalNotes.length>0}
 function layerLabel(layer,index){if(layer?.name)return String(layer.name);if(layer?.label)return String(layer.label);if(layer?.id==="technique-layer")return "奏法";return "書き込み"+(index+1)}
 function openViewOptions(item){
+ sessionStorage.removeItem(ACTIVE_SETLIST_KEY);
  const score=scoreOfPayload(item.payload)||{},box=$("#viewOptions");pendingView=item;$("#viewSongTitle").textContent=item.title;box.innerHTML="";
  const add=(key,label,checked,enabled=true)=>{const row=document.createElement("label");row.className="view-option"+(enabled?"":" disabled");const name=document.createElement("span");name.textContent=label;const input=document.createElement("input");input.type="checkbox";input.dataset.viewKey=key;input.checked=checked;input.disabled=!enabled;row.append(name,input);box.append(row)};
  add("lyrics","歌詞",score.lyricsVisible!==false,hasLyrics(score));add("vocal","唄",score.vocalVisible!==false,hasVocal(score));
@@ -168,6 +223,7 @@ function openViewOptions(item){
  openPopup($("#viewDialog"));
 }
 function render(){
+ if(showSetlists){renderSetlists();return}
  let lib=load().sort((a,b)=>collator.compare(hira(a.reading||a.title),hira(b.reading||b.title)));
  const q=hira($("#search").value);
  lib=lib.filter(x=>(active==="すべて"||rowOf(x.reading||x.title)===active)&&(!q||hira(x.title).includes(q)||hira(x.reading).includes(q)));
@@ -192,6 +248,104 @@ function render(){
   a.append(view,play,del);card.append(t,a);list.append(card);
  }
 }
+/* ===== セットリスト（参照のみ。文化譜JSONを複製・変更しない） ===== */
+function switchMode(setlists){
+ showSetlists=Boolean(setlists);
+ $("#libraryMode").classList.toggle("active",!showSetlists);
+ $("#setlistMode").classList.toggle("active",showSetlists);
+ $("#libraryMode").setAttribute("aria-pressed",String(!showSetlists));
+ $("#setlistMode").setAttribute("aria-pressed",String(showSetlists));
+ $("#libraryTools").hidden=showSetlists;
+ $("#setlistToolbar").hidden=!showSetlists;
+ render();
+}
+function renderSetlists(){
+ const lib=load();const byId=new Map(lib.map(x=>[String(x.id),x]));
+ list.innerHTML="";
+ const setlists=loadSetlists();
+ if(!setlists.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="セットリストはまだありません。「＋ セットリスト作成」から作れます。";list.append(empty);return}
+ for(const set of setlists){
+  const members=(Array.isArray(set.itemIds)?set.itemIds:[]).map(id=>byId.get(String(id))).filter(Boolean);
+  const box=document.createElement("article");box.className="set-card";
+  const head=document.createElement("div");head.className="set-card-head";
+  const folder=document.createElement("button");folder.className="set-folder";folder.type="button";
+  const name=document.createElement("span");name.textContent="▸ 📁 "+set.name;
+  const count=document.createElement("small");count.textContent=members.length+"譜";
+  folder.append(name,count);
+  const contents=document.createElement("div");contents.className="set-member-list";
+  const missing=(set.itemIds||[]).length-members.length;
+  if(members.length){members.forEach((x,i)=>{const row=document.createElement("div");row.textContent=(i+1)+". "+x.title;contents.append(row)})}
+  else{contents.textContent="登録済みの譜面がありません。"}
+  if(missing){const note=document.createElement("p");note.className="note";note.textContent="譜面帳から削除された譜面が"+missing+"件あります。";contents.append(note)}
+  contents.hidden=!expandedSetlists.has(set.id);
+  folder.setAttribute("aria-expanded",String(!contents.hidden));
+  folder.onclick=()=>{contents.hidden=!contents.hidden;folder.setAttribute("aria-expanded",String(!contents.hidden));if(contents.hidden)expandedSetlists.delete(set.id);else expandedSetlists.add(set.id);name.textContent=(contents.hidden?"▸":"▾")+" 📁 "+set.name};
+  const actions=document.createElement("div");actions.className="actions";
+  const open=document.createElement("button");open.className="view";open.type="button";open.textContent="▶ 譜面を見る";open.disabled=!members.length;open.onclick=()=>openSetlist(set,members);
+  const edit=document.createElement("button");edit.type="button";edit.textContent="編集";edit.onclick=()=>editSetlist(set);
+  const del=document.createElement("button");del.className="delete";del.type="button";del.textContent="削除";del.onclick=()=>{
+   if(!confirm("セットリスト「"+set.name+"」を削除しますか？\n元の譜面は残ります。"))return;
+   saveSetlists(loadSetlists().filter(x=>x.id!==set.id));expandedSetlists.delete(set.id);render();
+  };
+  actions.append(open,edit,del);head.append(folder,actions);box.append(head,contents);list.append(box);
+ }
+}
+function openSetlist(set,members){
+ if(!members.length)return;
+ const state={id:set.id,name:set.name,itemIds:members.map(x=>x.id),index:0};
+ try{
+  sessionStorage.setItem(ACTIVE_SETLIST_KEY,JSON.stringify(state));
+  sessionStorage.setItem("shian-scorebook-view-score",JSON.stringify(members[0].payload));
+  sessionStorage.setItem("shian-scorebook-view-item-id",String(members[0].id));
+  location.href="./viewer.html";
+ }catch(error){alert("セットリストを開けませんでした。\n"+(error?.message||error))}
+}
+function editSetlist(set){
+ editingSetlistId=set?.id||null;
+ $("#setlistDialogTitle").textContent=set?"セットリストを編集":"セットリストを作成";
+ $("#setlistName").value=set?.name||"";
+ const presentIds=new Set(load().map(x=>String(x.id)));
+ chosenItemIds=(Array.isArray(set?.itemIds)?set.itemIds:[]).map(String).filter(id=>presentIds.has(id));
+ renderSetlistEditor();openPopup($("#setlistDialog"));$("#setlistName").focus();
+}
+function renderSetlistEditor(){
+ const lib=load().sort((a,b)=>collator.compare(hira(a.reading||a.title),hira(b.reading||b.title)));
+ const byId=new Map(lib.map(x=>[String(x.id),x]));
+ const candidates=$("#setlistCandidates");candidates.innerHTML="";
+ if(!lib.length){candidates.textContent="まず文化譜一覧へ譜面を登録してください。"}
+ for(const item of lib){
+  const id=String(item.id),label=document.createElement("label");label.className="set-editor-option";
+  const check=document.createElement("input");check.type="checkbox";check.checked=chosenItemIds.includes(id);
+  check.onchange=()=>{if(check.checked){if(!chosenItemIds.includes(id))chosenItemIds.push(id)}else chosenItemIds=chosenItemIds.filter(x=>x!==id);renderSetlistEditor()};
+  const title=document.createElement("span");title.textContent=item.title;
+  label.append(check,title);candidates.append(label);
+ }
+ const chosen=$("#setlistChosen");chosen.innerHTML="";
+ if(!chosenItemIds.length){const empty=document.createElement("p");empty.className="note";empty.textContent="上で譜面を選択してください。";chosen.append(empty)}
+ chosenItemIds.forEach((id,i)=>{
+  const item=byId.get(id);if(!item)return;
+  const row=document.createElement("div");row.className="set-chosen-row";
+  const title=document.createElement("span");title.textContent=(i+1)+". "+item.title;
+  const up=document.createElement("button");up.type="button";up.textContent="↑";up.title="前へ移動";up.disabled=i===0;up.onclick=()=>{[chosenItemIds[i-1],chosenItemIds[i]]=[chosenItemIds[i],chosenItemIds[i-1]];renderSetlistEditor()};
+  const down=document.createElement("button");down.type="button";down.textContent="↓";down.title="後へ移動";down.disabled=i===chosenItemIds.length-1;down.onclick=()=>{[chosenItemIds[i+1],chosenItemIds[i]]=[chosenItemIds[i],chosenItemIds[i+1]];renderSetlistEditor()};
+  row.append(title,up,down);chosen.append(row);
+ });
+}
+$("#libraryMode").onclick=()=>switchMode(false);
+$("#setlistMode").onclick=()=>switchMode(true);
+$("#createSetlist").onclick=()=>editSetlist(null);
+$("#setlistCancel").onclick=()=>closePopup($("#setlistDialog"));
+$("#setlistSave").onclick=()=>{
+ const name=$("#setlistName").value.trim();
+ if(!name){alert("セットリスト名を入力してください。");$("#setlistName").focus();return}
+ if(!chosenItemIds.length){alert("セットリストへ登録する譜面を選んでください。");return}
+ const all=loadSetlists(),index=all.findIndex(x=>x.id===editingSetlistId);
+ if(all.some((x,i)=>i!==index&&x.name===name)){alert("同じ名前のセットリストがあります。");return}
+ const item={id:index>=0?all[index].id:newId(),name,itemIds:chosenItemIds.slice()};
+ if(index>=0)all[index]=item;else all.push(item);
+ try{saveSetlists(all)}catch(error){alert("セットリストを保存できませんでした。\n"+(error?.message||error));return}
+ closePopup($("#setlistDialog"));render();
+};
 const kana=$("#kana");
 kana.querySelectorAll("button[data-row]").forEach(b=>{
  b.addEventListener("click",()=>{
@@ -235,6 +389,7 @@ $("#viewGo").onclick=()=>{
  try{
   const cloned=JSON.parse(JSON.stringify(pendingView.payload)),score=scoreOfPayload(cloned);
   $("#viewOptions").querySelectorAll("input[data-view-key]").forEach(input=>{if(input.disabled)return;const key=input.dataset.viewKey;if(key==="lyrics")score.lyricsVisible=input.checked;else if(key==="vocal")score.vocalVisible=input.checked;else if(key.startsWith("layer:")){const i=Number(key.slice(6));if(Array.isArray(score.layers)&&score.layers[i]){score.layers[i].visible=input.checked;score.layers[i].printEnabled=input.checked}}});
+  sessionStorage.removeItem(ACTIVE_SETLIST_KEY);
   sessionStorage.setItem("shian-scorebook-view-score",JSON.stringify(cloned));
   sessionStorage.setItem("shian-scorebook-view-item-id",String(pendingView.id||""));
   closePopup($("#viewDialog"));pendingView=null;location.href="./viewer.html";

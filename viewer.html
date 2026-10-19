@@ -471,9 +471,11 @@ function syncFullscreenView(){
   document.body.classList.toggle("fullscreen-view",active);
   fullscreenButton.textContent=active?"全画面表示中":"⛶ 全画面表示";
   fullscreenHint.hidden=!active;
-  fullscreenHint.textContent=pages.length>1||(activeSetlist&&activeSetlist.itemIds.length>1)
-    ?"右から左へスワイプ：次へ　／　左から右へ：前へ　／　タップ：全画面終了"
-    :"タップで全画面表示を終了";
+  fullscreenHint.textContent=activeSetlist
+    ?"左タップ：前へ　／　右タップ：次へ　／　中央タップ：全画面終了"
+    :pages.length>1
+      ?"右から左へスワイプ：次へ　／　左から右へ：前へ　／　タップ：全画面終了"
+      :"タップで全画面表示を終了";
   requestAnimationFrame(()=>showPage(currentPage));
 }
 
@@ -507,6 +509,7 @@ if(activeSetlist){
  const currentName=String(score.title||payload?.title||"文化譜");
  document.querySelector("header h1").textContent=activeSetlist.name+"｜"+currentName;
  document.getElementById("back").textContent="← セットリストを閉じる";
+ document.querySelector(".viewer-note").textContent="左右タップ：前後の譜面へ　／　全画面の中央タップ：戻る";
 }
 
 /* ===== 譜面帳専用・永続手書きレイヤー ===== */
@@ -744,7 +747,7 @@ document.getElementById("inkUndo").onclick=()=>{
 };
 
 inkOverlay.addEventListener("dblclick",event=>{
-  if(isFullscreenActive()||inkActive)return;
+  if(isFullscreenActive()||inkActive||(activeSetlist&&!isSetlistCenterTap(event.clientX)))return;
   event.preventDefault();
   openInkPopup(event.clientX,event.clientY);
 });
@@ -829,7 +832,7 @@ inkOverlay.addEventListener("pointercancel",event=>{
 
 /* 指・ペンのダブルタップでも設定を開く（通常閲覧時のみ） */
 inkOverlay.addEventListener("pointerup",event=>{
-  if(isFullscreenActive()||inkActive||event.pointerType==="mouse")return;
+  if(isFullscreenActive()||inkActive||event.pointerType==="mouse"||(activeSetlist&&!isSetlistCenterTap(event.clientX)))return;
   const now=performance.now();
   const current={x:event.clientX,y:event.clientY};
   const closeEnough=lastTapPoint&&Math.hypot(current.x-lastTapPoint.x,current.y-lastTapPoint.y)<28;
@@ -846,11 +849,10 @@ inkOverlay.addEventListener("pointerup",event=>{
 
 updateInkUi();
 
-/* 全画面表示は閲覧専用。
-   1タップ＝全画面終了。
-   右→左スワイプ＝次ページ、左→右スワイプ＝前ページ。
-   タブレットではブラウザのスクロール判定に奪われないよう、
-   Pointer Events を capture で受け、古い環境には Touch Events を補助する。 */
+/* 通常表示のセットリストは左右タップで前後の譜面へ進む。
+   全画面のセットリストは左右タップでページ送り／中央タップで終了。
+   セットリスト以外の全画面タップ終了・左右スワイプは従来通り。
+   書き込み中はページ送りしない。古い端末はTouch Eventsで補助する。 */
 let fullscreenGesture=null;
 let touchGesture=null;
 const SWIPE_MAX_VERTICAL_RATIO=.9;
@@ -868,8 +870,19 @@ function animatePageSwipe(direction){
   window.setTimeout(()=>stage.classList.remove(className),130);
 }
 
-function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
-  if(!isFullscreenActive())return;
+/* 譜面上の左右40%はページ送り、中央20%は全画面終了・手書き設定用。 */
+function setlistTapSide(clientX){
+  const rect=stage.getBoundingClientRect();
+  if(rect.width<=0)return 0;
+  const fraction=(clientX-rect.left)/rect.width;
+  return fraction<.4?-1:fraction>.6?1:0;
+}
+function isSetlistCenterTap(clientX){
+  return setlistTapSide(clientX)===0;
+}
+function handleViewerGesture(startX,startY,endX,endY,startTime,event){
+  if(!isFullscreenActive()&&!activeSetlist)return;
+  if(inkActive||!inkPopup.hidden||!pages.length)return;
 
   const dx=endX-startX;
   const dy=endY-startY;
@@ -879,6 +892,7 @@ function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
   const minSwipe=swipeMinimum();
 
   const isSwipe=
+    isFullscreenActive() &&
     (pages.length>1||(activeSetlist&&activeSetlist.itemIds.length>1)) &&
     elapsed<=SWIPE_MAX_MS &&
     absX>=minSwipe &&
@@ -905,6 +919,16 @@ function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
 
   /* ごく小さい移動だけを「タップ」と判定する */
   if(absX<26&&absY<26&&elapsed<800){
+    if(activeSetlist){
+      const direction=setlistTapSide(endX);
+      if(direction){
+        event?.preventDefault?.();
+        moveViewerPage(direction);
+        return;
+      }
+      /* セットリストの中央タップは全画面から戻る。通常表示では操作しない。 */
+      if(!isFullscreenActive())return;
+    }
     event?.preventDefault?.();
     exitFullscreenView();
   }
@@ -912,7 +936,7 @@ function handleFullscreenGesture(startX,startY,endX,endY,startTime,event){
 
 /* Pointer Events 対応タブレット */
 stage.addEventListener("pointerdown",event=>{
-  if(!isFullscreenActive()||!event.isPrimary)return;
+  if((!isFullscreenActive()&&!activeSetlist)||inkActive||!event.isPrimary)return;
 
   fullscreenGesture={
     pointerId:event.pointerId,
@@ -921,7 +945,8 @@ stage.addEventListener("pointerdown",event=>{
     startTime:performance.now()
   };
 
-  try{stage.setPointerCapture(event.pointerId)}catch(error){}
+  /* 通常表示のペン/指タップは、既存の書き込みダブルタップと共存させる。 */
+  if(isFullscreenActive())try{stage.setPointerCapture(event.pointerId)}catch(error){}
 },{capture:true});
 
 stage.addEventListener("pointermove",event=>{
@@ -942,7 +967,7 @@ stage.addEventListener("pointerup",event=>{
 
   try{stage.releasePointerCapture(event.pointerId)}catch(error){}
 
-  handleFullscreenGesture(
+  handleViewerGesture(
     gesture.startX,
     gesture.startY,
     event.clientX,
@@ -955,19 +980,19 @@ stage.addEventListener("pointerup",event=>{
 /* Pointer Events が無い古いタブレット向け */
 if(!("PointerEvent" in window)){
   stage.addEventListener("touchstart",event=>{
-    if(!isFullscreenActive()||event.touches.length!==1)return;
+    if((!isFullscreenActive()&&!activeSetlist)||inkActive||event.touches.length!==1)return;
     const touch=event.touches[0];
     touchGesture={
       startX:touch.clientX,
       startY:touch.clientY,
       startTime:performance.now()
     };
-    event.preventDefault();
+    if(isFullscreenActive())event.preventDefault();
   },{passive:false,capture:true});
 
   stage.addEventListener("touchmove",event=>{
-    if(!isFullscreenActive()||!touchGesture)return;
-    event.preventDefault();
+    if(!touchGesture)return;
+    if(isFullscreenActive())event.preventDefault();
   },{passive:false,capture:true});
 
   stage.addEventListener("touchend",event=>{
@@ -977,7 +1002,7 @@ if(!("PointerEvent" in window)){
     touchGesture=null;
     if(!touch)return;
 
-    handleFullscreenGesture(
+    handleViewerGesture(
       gesture.startX,
       gesture.startY,
       touch.clientX,
@@ -1184,6 +1209,24 @@ function moveViewerPage(delta){
 }
 document.getElementById("prev").onclick=()=>moveViewerPage(-1);
 document.getElementById("next").onclick=()=>moveViewerPage(1);
+
+/* キーボード信号を送るBluetoothページ送りペダル（HID）に対応。
+   MIDI専用ペダルは別途入力方式の確認が必要。押しっぱなしで連続送りしない。 */
+window.addEventListener("keydown",event=>{
+  if(!activeSetlist||!pages.length||inkActive||!inkPopup.hidden||event.repeat)return;
+  if(event.ctrlKey||event.altKey||event.metaKey||event.isComposing)return;
+  const target=event.target;
+  if(target instanceof Element&&target.closest("input,textarea,select,button,[contenteditable]"))return;
+  const backKeys=["ArrowLeft","ArrowUp","PageUp"];
+  const forwardKeys=["ArrowRight","ArrowDown","PageDown"," ","Spacebar"];
+  if(backKeys.includes(event.key)){
+    event.preventDefault();
+    moveViewerPage(-1);
+  }else if(forwardKeys.includes(event.key)){
+    event.preventDefault();
+    moveViewerPage(1);
+  }
+});
 window.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 window.visualViewport?.addEventListener("resize",()=>showPage(currentPage),{passive:true});
 window.addEventListener("orientationchange",()=>requestAnimationFrame(()=>showPage(currentPage)),{passive:true});

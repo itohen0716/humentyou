@@ -105,13 +105,17 @@ main{
 }
 #paperStage.page-swipe-next{opacity:.88;transform:translateX(-10px)}
 #paperStage.page-swipe-prev{opacity:.88;transform:translateX(10px)}
-#sourceFrame{
+#sourceFrame,.score-cache-frame{
   position:absolute;
   left:0;
   top:0;
   border:0;
   background:#fff;
   transform-origin:0 0
+}
+.score-cache-frame{
+  visibility:hidden;
+  pointer-events:none;
 }
 #inkOverlay{
   position:absolute;
@@ -385,7 +389,7 @@ try{
  if(state&&Array.isArray(state.itemIds)&&state.itemIds.length&&Number.isInteger(state.index)&&state.index>=0&&state.index<state.itemIds.length&&state.name){activeSetlist=state}
 }catch(error){console.warn("セットリスト情報を読み込めませんでした。",error)}
 
-const frame=document.getElementById("sourceFrame");
+let frame=document.getElementById("sourceFrame");
 const stage=document.getElementById("paperStage");
 const loading=document.getElementById("loading");
 const inkOverlay=document.getElementById("inkOverlay");
@@ -513,8 +517,8 @@ if(activeSetlist){
 }
 
 /* ===== 譜面帳専用・永続手書きレイヤー ===== */
-const inkIdentity=viewItemId||("title:"+String(score.title||"untitled"));
-const inkStorageKey=INK_STORAGE_PREFIX+inkIdentity;
+let inkIdentity=viewItemId||("title:"+String(score.title||"untitled"));
+let inkStorageKey=INK_STORAGE_PREFIX+inkIdentity;
 let inkData={version:1,pages:{}};
 let inkTool="pen";
 let inkColor="#d92d20";
@@ -533,6 +537,19 @@ try{
   if(saved&&saved.version===1&&saved.pages&&typeof saved.pages==="object")inkData=saved;
 }catch(error){
   console.warn("手書きデータを読み込めませんでした。",error);
+}
+
+/* セットリスト内を再読み込みなしで移動した際、手書きレイヤーも譜面ごとに切り替える。 */
+function changeInkIdentity(item){
+  const data=item.payload;
+  const currentScore=data&&data.score&&typeof data.score==="object"?data.score:data;
+  inkIdentity=String(item.id||("title:"+String(currentScore?.title||"untitled")));
+  inkStorageKey=INK_STORAGE_PREFIX+inkIdentity;
+  inkData={version:1,pages:{}};
+  try{
+    const saved=JSON.parse(localStorage.getItem(inkStorageKey)||"null");
+    if(saved&&saved.version===1&&saved.pages&&typeof saved.pages==="object")inkData=saved;
+  }catch(error){console.warn("手書きデータを読み込めませんでした。",error)}
 }
 
 function pageInk(){
@@ -1037,6 +1054,10 @@ const restoreEditorData=()=>{
 let currentPage=0;
 let pages=[];
 let documentSize={width:0,height:0};
+/* 完全に描画済みのページを保持する。通常閲覧では使用しない。 */
+let setlistPageCache=null;
+let setlistCacheReady=false;
+let legacyViewerActive=!activeSetlist;
 
 function waitFrames(count=2){
   return new Promise(resolve=>{
@@ -1191,6 +1212,11 @@ function moveViewerPage(delta){
  if(!activeSetlist)return;
  const nextIndex=activeSetlist.index+delta;
  if(nextIndex<0||nextIndex>=activeSetlist.itemIds.length)return;
+ /* 静的な印刷譜を準備済みなら、ページ全体や写譜アプリを再読み込みしない。 */
+ if(setlistCacheReady&&setlistPageCache?.[nextIndex]){
+   showCachedSetlistScore(nextIndex,delta<0?"last":"first");
+   return;
+ }
  let lib;
  try{lib=JSON.parse(localStorage.getItem(LIBRARY_KEY)||"[]")}catch(error){lib=[]}
  const next=Array.isArray(lib)?lib.find(item=>String(item.id)===String(activeSetlist.itemIds[nextIndex])):null;
@@ -1232,6 +1258,7 @@ window.visualViewport?.addEventListener("resize",()=>showPage(currentPage),{pass
 window.addEventListener("orientationchange",()=>requestAnimationFrame(()=>showPage(currentPage)),{passive:true});
 
 frame.addEventListener("load",async()=>{
+  if(!legacyViewerActive)return;
   try{
     const w=frame.contentWindow;
     const d=frame.contentDocument;
@@ -1355,10 +1382,186 @@ frame.addEventListener("load",async()=>{
   }
 });
 
+/* ===== セットリスト専用：印刷完成状態まで一括先読み =====
+   編集画面のiframeを何枚も保持せず、印刷済みDOMの静的な写しだけを保持する。
+   初回準備後の譜面送りは通信・再印刷・ページ遷移を行わない。
+   通常の「譜面を見る」は上の従来処理をそのまま利用する。
+*/
+function scoreFromSetlistItem(item){
+  const payload=item.payload;
+  return payload&&payload.score&&typeof payload.score==="object"?payload.score:payload;
+}
+function getSetlistItems(){
+  const library=JSON.parse(localStorage.getItem(LIBRARY_KEY)||"[]");
+  if(!Array.isArray(library))throw new Error("譜面帳のデータが見つかりません");
+  return activeSetlist.itemIds.map(id=>{
+    const item=library.find(entry=>String(entry.id)===String(id));
+    if(!item||!item.payload)throw new Error("セットリスト内の譜面が見つかりません");
+    return item;
+  });
+}
+function waitIframeLoad(iframe){
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{cleanup();reject(new Error("譜面の読み込みがタイムアウトしました"))},45000);
+    const cleanup=()=>{clearTimeout(timer);iframe.removeEventListener("load",onLoad);iframe.removeEventListener("error",onError)};
+    const onLoad=()=>{cleanup();resolve()};
+    const onError=()=>{cleanup();reject(new Error("譜面を読み込めませんでした"))};
+    iframe.addEventListener("load",onLoad,{once:true});
+    iframe.addEventListener("error",onError,{once:true});
+  });
+}
+function preventEditorOverwrite(iframe){
+  /* ページ切替やiframe廃棄時、編集中の原本へ閲覧データを書き戻さない。 */
+  try{
+    const w=iframe.contentWindow;
+    const proto=w.Storage.prototype;
+    const originalSetItem=proto.setItem;
+    proto.setItem=function(key,value){
+      if(this===w.localStorage&&key===EDIT_KEY)return;
+      return originalSetItem.call(this,key,value);
+    };
+  }catch(error){console.warn("編集用データ保護の設定に失敗",error)}
+}
+async function prepareStaticPrint(preparer,item,index,total){
+  const data=scoreFromSetlistItem(item);
+  if(!data||typeof data!=="object")throw new Error("文化譜の形式が不正です");
+  loading.textContent=`セットリストの譜面を準備しています… ${index+1} / ${total} 譜`;
+  /* 写譜アプリ本来の読込経路を使用。各譜は直列に描画してデータ競合を防ぐ。 */
+  localStorage.setItem(EDIT_KEY,JSON.stringify(data));
+  const loaded=waitIframeLoad(preparer);
+  preparer.src=APP_URL+(APP_URL.includes("?")?"&":"?")+"setlist_preload="+index;
+  await loaded;
+  const w=preparer.contentWindow,d=preparer.contentDocument;
+  if(!w||!d)throw new Error("写譜アプリを開けませんでした");
+  await waitForStableNormalLayout(w,d);
+  w.dispatchEvent(new w.Event("beforeprint"));
+  await waitFrames(3);
+  const root=d.querySelector("#printRootV2");
+  if(!root||!root.querySelector(".pv2-page"))throw new Error("印刷用譜面を生成できませんでした");
+  const exactPrintCss=collectExactPrintCss(w,d);
+  if(!exactPrintCss.trim())throw new Error("印刷CSSを取得できませんでした");
+  const printStyle=d.createElement("style");
+  printStyle.id="scorebook-native-print-view";
+  printStyle.textContent=exactPrintCss+`
+    html,body{margin:0!important;padding:0!important;background:#fff!important}
+    body{overflow:visible!important}
+    body>main.app{display:none!important}
+    .print-root{display:none!important}
+    .shian-print-v2{display:block!important;margin:0!important;padding:0!important;background:#fff!important}
+    .pv2-page{display:block!important;margin:0!important}
+  `;
+  d.head.appendChild(printStyle);
+  try{await d.fonts?.ready}catch(error){}
+  await waitFrames(3);
+  /* 完成済みの印刷DOMと元のCSS・フォント定義だけを保存する。
+     scriptはコピーせず、元の編集アプリの実行インスタンスは破棄する。 */
+  const clonedHead=d.head.cloneNode(true);
+  clonedHead.querySelectorAll("script").forEach(node=>node.remove());
+  const base=d.createElement("base");
+  base.href=APP_URL;
+  clonedHead.prepend(base);
+  const printCopy=root.cloneNode(true);
+  printCopy.removeAttribute("aria-hidden");
+  preventEditorOverwrite(preparer);
+  return "<!doctype html><html lang=\"ja\">"+clonedHead.outerHTML+"<body>"+printCopy.outerHTML+"</body></html>";
+}
+async function createStaticScoreFrame(markup,index,item){
+  const cached=document.createElement("iframe");
+  cached.className="score-cache-frame";
+  cached.title="準備済みの文化譜 "+(index+1);
+  cached.setAttribute("aria-hidden","true");
+  cached.style.width=PRINT_SOURCE_WIDTH+"px";
+  cached.style.height=PRINT_SOURCE_HEIGHT+"px";
+  stage.insertBefore(cached,inkOverlay);
+  const done=waitIframeLoad(cached);
+  cached.srcdoc=markup;
+  await done;
+  const d=cached.contentDocument;
+  if(!d)throw new Error("印刷済み譜面を表示できませんでした");
+  try{await d.fonts?.ready}catch(error){}
+  await waitFrames(2);
+  const elements=[...d.querySelectorAll("#printRootV2 .pv2-page")];
+  if(!elements.length)throw new Error("印刷済み譜面のページがありません");
+  const readyPages=elements.map(measurePrintedPage);
+  if(readyPages.some(p=>!p.width||!p.height))throw new Error("印刷ページの大きさを確定できませんでした");
+  const width=Math.max(d.documentElement.scrollWidth,d.body.scrollWidth,...readyPages.map(p=>Math.ceil(p.right+PAGE_SIDE_MARGIN)));
+  const height=Math.max(d.documentElement.scrollHeight,d.body.scrollHeight,...readyPages.map(p=>Math.ceil(p.bottom+PAGE_TOP_BOTTOM_MARGIN)));
+  return {iframe:cached,pages:readyPages,size:{width,height},item};
+}
+function showCachedSetlistScore(index,target="first"){
+  if(!setlistPageCache?.[index])return;
+  const old=setlistPageCache[activeSetlist.index];
+  if(old){old.iframe.style.visibility="hidden";old.iframe.setAttribute("aria-hidden","true")}
+  activeSetlist.index=index;
+  const cached=setlistPageCache[index];
+  frame=cached.iframe;
+  pages=cached.pages;
+  documentSize=cached.size;
+  changeInkIdentity(cached.item);
+  document.querySelector("header h1").textContent=activeSetlist.name+"｜"+String(scoreFromSetlistItem(cached.item)?.title||cached.item.title||"文化譜");
+  frame.style.visibility="visible";
+  frame.setAttribute("aria-hidden","false");
+  sessionStorage.setItem(ACTIVE_SETLIST_KEY,JSON.stringify(activeSetlist));
+  sessionStorage.removeItem(SETLIST_TARGET_KEY);
+  showPage(target==="last"?pages.length-1:0);
+}
+async function prepareEntireSetlist(){
+  const items=getSetlistItems();
+  /* 実際の運用は6〜10譜、最大でも20譜未満を想定。静的DOMなので全譜を準備。 */
+  const preparer=document.createElement("iframe");
+  preparer.title="セットリスト準備用";
+  preparer.setAttribute("aria-hidden","true");
+  Object.assign(preparer.style,{
+    position:"absolute",left:"-10000px",top:"0",width:PRINT_SOURCE_WIDTH+"px",
+    height:PRINT_SOURCE_HEIGHT+"px",pointerEvents:"none",border:"none"
+  });
+  document.body.appendChild(preparer);
+  const prepared=[];
+  try{
+    for(let i=0;i<items.length;i++){
+      const markup=await prepareStaticPrint(preparer,items[i],i,items.length);
+      prepared.push(await createStaticScoreFrame(markup,i,items[i]));
+    }
+    setlistPageCache=prepared;
+    setlistCacheReady=true;
+    restoreEditorData();
+    preparer.remove();
+    const startIndex=activeSetlist.index;
+    /* まだ表示用iframeを切り替えていないので古い画面の非表示は不要。 */
+    const target=sessionStorage.getItem(SETLIST_TARGET_KEY)==="last"?"last":"first";
+    showCachedSetlistScore(startIndex,target);
+    frame.parentNode.querySelector("#sourceFrame")?.remove();
+    loading.remove();
+    sessionStorage.removeItem(VIEW_KEY);
+    sessionStorage.removeItem(VIEW_ITEM_KEY);
+    if(sessionStorage.getItem(SETLIST_FULLSCREEN_KEY)==="1"){
+      sessionStorage.removeItem(SETLIST_FULLSCREEN_KEY);
+      softFullscreen=true;
+      syncFullscreenView();
+    }
+  }catch(error){
+    console.error("セットリストの先読みを中止して通常の閲覧へ戻ります。",error);
+    restoreEditorData();
+    preparer.remove();
+    prepared.forEach(entry=>entry.iframe.remove());
+    setlistPageCache=null;
+    setlistCacheReady=false;
+    /* 先読み失敗時だけ従来の安全なページ遷移へ戻す。 */
+    loading.textContent="先読みを完了できなかったため、通常表示で開きます…";
+    localStorage.setItem(EDIT_KEY,JSON.stringify(score));
+    legacyViewerActive=true;
+    frame.src=APP_URL;
+  }
+}
+
 /* 印刷用の元座標はPC・タブレット・スマホのどれでも一定にする。 */
 frame.style.width=PRINT_SOURCE_WIDTH+"px";
 frame.style.height=PRINT_SOURCE_HEIGHT+"px";
-frame.src=APP_URL;
+if(activeSetlist){
+  prepareEntireSetlist();
+}else{
+  frame.src=APP_URL;
+}
 
 })();
 </script>
